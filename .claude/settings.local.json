@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:sec.cloudapps.cisco.com)",
+      "WebSearch",
+      "WebFetch(domain:api.github.com)",
+      "PowerShell(gh auth *)",
+      "PowerShell(winget install *)",
+      "PowerShell(gh repo *)"
+    ]
+  }
+}

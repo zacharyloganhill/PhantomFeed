@@ -24,6 +24,44 @@ ALGORITHM      = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 480))  # 8 hours
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "phantomfeed-admin")
 
+# ── TAXII 2.1 Feeds ──────────────────────────────────────────────────────────
+TAXII_USERNAME  = os.getenv("TAXII_USERNAME", "")
+TAXII_PASSWORD  = os.getenv("TAXII_PASSWORD", "")
+TAXII_CERT_PATH = os.getenv("TAXII_CERT_PATH", "")
+
+TAXII_FEEDS = [
+    {
+        "id": "cisa_ais",
+        "label": "CISA AIS",
+        "url": "https://ais2.cisa.dhs.gov/taxii2/",
+        "collection": "default",
+        "requires_cert": True,
+        "notes": "Requires CISA AIS registration at cisa.gov/ais",
+    },
+    {
+        "id": "circl_misp",
+        "label": "CIRCL MISP Feed",
+        "url": "https://www.circl.lu/doc/misp/feed-osint/",
+        "collection": "default",
+        "requires_cert": False,
+        "notes": "CIRCL OSINT MISP feed — public",
+    },
+    {
+        "id": "otx_taxii",
+        "label": "AlienVault OTX TAXII",
+        "url": "https://otx.alienvault.com/taxii/discovery",
+        "collection": "user_AlienVault",
+        "requires_cert": False,
+        "notes": "Requires OTX_API_KEY as password",
+    },
+]
+
+# ── IOC Enrichment API Keys ───────────────────────────────────────────────────
+ABUSEIPDB_API_KEY    = os.getenv("ABUSEIPDB_API_KEY", "")
+VIRUSTOTAL_API_KEY   = os.getenv("VIRUSTOTAL_API_KEY", "")
+GREYNOISE_API_KEY    = os.getenv("GREYNOISE_API_KEY", "")
+ADMIN_SLACK_WEBHOOK  = os.getenv("ADMIN_SLACK_WEBHOOK", "")
+
 # ── SMTP (for email digests) ──────────────────────────────────────────────────
 SMTP_HOST     = os.getenv("SMTP_HOST", "")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))

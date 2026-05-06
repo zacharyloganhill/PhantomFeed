@@ -22,6 +22,7 @@ from ingest.free_feeds import (
     GitHubAdvisoryGoFetcher, GitHubAdvisoryRustFetcher,
     GitHubAdvisoryMavenFetcher, GitHubAdvisoryNugetFetcher,
 )
+from ingest.taxii_feeds import build_taxii_fetchers
 
 console = Console()
 scheduler: Optional[AsyncIOScheduler] = None
@@ -61,6 +62,10 @@ def _build_fetchers() -> dict:
 
     # Vendor RSS feeds
     for f in build_all_vendor_fetchers():
+        fetchers[f.feed_id] = f
+
+    # TAXII 2.1 feeds
+    for f in build_taxii_fetchers():
         fetchers[f.feed_id] = f
 
     return fetchers

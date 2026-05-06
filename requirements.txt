@@ -15,3 +15,6 @@ bcrypt==4.0.1  # passlib compat — bcrypt 4.1+ breaks passlib's backend detecti
 # PDF reports (optional — falls back to ReportLab, then HTML)
 weasyprint>=62.3; sys_platform != "win32"
 reportlab>=4.0.0
+# STIX/TAXII
+taxii2-client>=2.3.0
+stix2>=3.0.0
