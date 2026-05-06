@@ -1,16 +1,16 @@
-# ThreatPulse Intelligence Feed
+# HexIntel
 
-Real-time threat intelligence aggregation backend. Ingests CVEs, vendor advisories, CISA KEV, ICS alerts, threat actor reports, and supply chain warnings into a unified SQLite database with a REST API.
+Real-time threat intelligence aggregation platform. Ingests CVEs, vendor advisories, CISA KEV, ICS alerts, threat actor reports, and supply chain warnings into a unified SQLite database with a REST API and AI-assisted local dashboard.
 
 ## Architecture
 
 ```
-threatpulse/
-├── main.py                  # FastAPI app, lifespan, CORS
+hexintel/
+├── main.py                  # FastAPI app, lifespan, CORS, Ollama proxy
 ├── config.py                # All feed URLs, API keys, settings
+├── dashboard.html           # Local web dashboard (served at /dashboard.html)
 ├── .env                     # Your local secrets (never commit)
 ├── requirements.txt
-├── setup.sh                 # One-command setup
 │
 ├── db/
 │   └── database.py          # Async SQLite: connect, CRUD, deduplication
@@ -27,17 +27,87 @@ threatpulse/
     └── routes.py            # GET /items, POST /refresh, etc.
 ```
 
-## Quickstart
+## Setup (Windows)
 
-```bash
-git clone <this-repo>
-cd threatpulse
-chmod +x setup.sh && ./setup.sh
-source .venv/bin/activate
+### 1. Install Python 3.11+
+
+Download and install from [python.org](https://www.python.org/downloads/). During install, check **"Add Python to PATH"**.
+
+Verify:
+```
+python --version
+```
+
+### 2. Clone the repo
+
+```
+git clone https://github.com/zacharyloganhill/threatpulse.git hexintel
+cd hexintel
+```
+
+### 3. Create and activate a virtual environment
+
+```
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### 4. Install dependencies
+
+```
+pip install -r requirements.txt
+```
+
+### 5. Configure environment
+
+```
+copy .env.example .env
+```
+
+Open `.env` and fill in any API keys (both are optional — see [API Keys](#api-keys-optional-but-recommended) below).
+
+### 6. Install Ollama and pull a model
+
+Ollama powers the AI analyst panel in the dashboard. It runs entirely locally.
+
+1. Download and install Ollama from [ollama.com](https://ollama.com/download)
+2. After install, open a terminal and pull a model:
+
+```
+ollama pull llama3.2
+```
+
+3. Confirm Ollama is running:
+
+```
+ollama list
+```
+
+You should see `llama3.2:latest` in the output. Ollama runs as a background service on `http://localhost:11434` — leave it running while using HexIntel.
+
+> **Note:** The dashboard proxies AI requests through `/api/ollama` to avoid CORS issues. Ollama does **not** need to be publicly accessible — `localhost:11434` is sufficient.
+
+### 7. Run HexIntel
+
+With your venv active:
+
+```
 python main.py
 ```
 
-On startup the engine polls all feeds immediately, then continues polling on schedule.
+On first startup, the engine polls all feeds immediately, then continues on schedule. You will see ingestion progress in the terminal.
+
+### 8. Open the dashboard
+
+```
+http://localhost:8000/dashboard.html
+```
+
+- The statusbar shows **● CONNECTED** when the API is reachable and **● AI: llama3.2** when Ollama is detected.
+- Use the **Quick Actions** buttons in any item's detail pane to send AI prompts.
+- Hit **↺ REFRESH** to trigger an immediate feed poll.
+
+---
 
 ## API Keys (Optional but Recommended)
 
@@ -52,41 +122,45 @@ NVD_API_KEY=your_key_here
 OTX_API_KEY=your_key_here
 ```
 
+---
+
 ## Feeds Ingested
 
 ### Vulnerability Intelligence
-| Feed | Source | Interval | Notes |
-|------|--------|----------|-------|
-| NVD CVE API v2 | nvd.nist.gov | 15 min | Full CVSS, CPE, CWE metadata |
-| CISA KEV | cisa.gov | 15 min | Actively exploited CVEs |
-| CISA Advisories | cisa.gov | 60 min | AA## joint advisories, BODs |
-| CISA ICS | cisa.gov | 60 min | OT/SCADA specific |
+| Feed | Source | Interval |
+|------|--------|----------|
+| NVD CVE API v2 | nvd.nist.gov | 15 min |
+| CISA KEV | cisa.gov | 15 min |
+| CISA Advisories | cisa.gov | 60 min |
+| CISA ICS | cisa.gov | 60 min |
 
 ### Vendor Security Advisories
-| Feed | Source | Notes |
-|------|--------|-------|
-| Microsoft MSRC | msrc.microsoft.com | Patch Tuesday + OOB |
-| Cisco Security | sec.cloudapps.cisco.com | IOS, NX-OS, FTD, ASA |
-| Fortinet PSIRT | fortiguard.com | FortiOS, FortiProxy, FortiGate |
-| Palo Alto Networks | security.paloaltonetworks.com | PAN-OS, GlobalProtect |
-| Broadcom / VMware | vmware.com | ESXi, vCenter, NSX |
-| Red Hat | access.redhat.com | RHEL, OpenShift |
-| Ubuntu / Canonical | ubuntu.com | USN advisories |
-| SAP | sap.com | NetWeaver, HANA, S/4HANA |
-| Atlassian | atlassian.com | Jira, Confluence, Bitbucket |
-| F5 | support.f5.com | BIG-IP, NGINX |
+| Feed | Source |
+|------|--------|
+| Microsoft MSRC | msrc.microsoft.com |
+| Cisco Security | sec.cloudapps.cisco.com |
+| Fortinet PSIRT | fortiguard.com |
+| Palo Alto Networks | security.paloaltonetworks.com |
+| Broadcom / VMware | vmware.com |
+| Red Hat | access.redhat.com |
+| Ubuntu / Canonical | ubuntu.com |
+| SAP | sap.com |
+| Atlassian | atlassian.com |
+| F5 | support.f5.com |
 
 ### Threat Intelligence
-| Feed | Source | Notes |
-|------|--------|-------|
-| abuse.ch URLhaus | urlhaus-api.abuse.ch | Live malware URLs / C2 |
-| AlienVault OTX | otx.alienvault.com | Threat pulses (API key required) |
-| GitHub Advisory (npm) | github.com/advisories | Supply chain: Node.js packages |
-| GitHub Advisory (PyPI) | github.com/advisories | Supply chain: Python packages |
+| Feed | Source |
+|------|--------|
+| abuse.ch URLhaus | urlhaus-api.abuse.ch |
+| AlienVault OTX | otx.alienvault.com |
+| GitHub Advisory (npm) | github.com/advisories |
+| GitHub Advisory (PyPI) | github.com/advisories |
+
+---
 
 ## REST API
 
-Base URL: `http://localhost:8000/api/v1`  
+Base URL: `http://localhost:8000/api/v1`
 Interactive docs: `http://localhost:8000/docs`
 
 ### Endpoints
@@ -95,12 +169,24 @@ Interactive docs: `http://localhost:8000/docs`
 GET  /items                      List items (filterable, searchable, paginated)
 GET  /items/{id}                 Get single item
 POST /items/{id}/read            Mark as read
-POST /items/read-all             Mark all as read (optionally by feed)
+POST /items/read-all             Mark all as read
 GET  /stats                      Counts, feed breakdown, ingestion status
 GET  /feeds                      List all registered feed IDs
 POST /refresh                    Trigger immediate poll of all feeds
 POST /refresh/{feed_id}          Trigger poll of one specific feed
 DELETE /items/purge              Remove items older than retention period
+```
+
+### Ollama Proxy
+
+```
+GET|POST /api/ollama/{path}      Proxies to http://localhost:11434/{path}
+```
+
+The dashboard uses this to reach Ollama without CORS issues. You can also hit it directly:
+
+```bash
+curl http://localhost:8000/api/ollama/api/tags
 ```
 
 ### Query Parameters for `/items`
@@ -118,25 +204,27 @@ DELETE /items/purge              Remove items older than retention period
 ### Example Requests
 
 ```bash
-# New critical/high items today
+# New critical/high items
 curl "http://localhost:8000/api/v1/items?severity=CRITICAL,HIGH&is_new=true"
 
-# Search for anything Ivanti
+# Search for Ivanti
 curl "http://localhost:8000/api/v1/items?search=ivanti"
 
 # All ICS/OT advisories
 curl "http://localhost:8000/api/v1/items?category=ics"
 
-# Force an immediate refresh
+# Force immediate refresh
 curl -X POST "http://localhost:8000/api/v1/refresh"
 
 # Check stats
 curl "http://localhost:8000/api/v1/stats"
 ```
 
+---
+
 ## Database Schema
 
-SQLite file at `./threatpulse.db` (configurable via `DB_PATH` in `.env`).
+SQLite file at `./hexintel.db` (configurable via `DB_PATH` in `.env`).
 
 ```sql
 CREATE TABLE threat_items (
@@ -161,26 +249,7 @@ CREATE TABLE threat_items (
 );
 ```
 
-## Connecting the Frontend Dashboard
-
-The dashboard widget can call this API directly. Update the widget to fetch from:
-```
-GET http://localhost:8000/api/v1/items?severity=CRITICAL,HIGH&limit=50
-```
-
-Or use the Claude-powered dashboard to draft client advisories using the detail pane's "Quick Actions" which pass items directly to Claude for:
-- Client advisory drafting
-- Detection rule generation (SIEM/EDR)
-- IOC extraction and threat hunting queries
-
-## Adding New Feeds
-
-1. Create a class in `ingest/` that inherits `BaseFetcher`
-2. Set `feed_id`, `feed_label`, `category`, `poll_interval`
-3. Implement `async def fetch(self) -> list[dict]`
-4. Register it in `ingest/scheduler.py` → `_build_fetchers()`
-
-For RSS feeds, just add an entry to `VENDOR_RSS_FEEDS` in `config.py` — no code needed.
+---
 
 ## Environment Variables
 
@@ -192,6 +261,17 @@ For RSS feeds, just add an entry to `VENDOR_RSS_FEEDS` in `config.py` — no cod
 | `POLL_INTERVAL_SLOW` | `60` | Slow feed interval (minutes) |
 | `HOST` | `127.0.0.1` | API bind address |
 | `PORT` | `8000` | API port |
-| `DB_PATH` | `./threatpulse.db` | SQLite file location |
+| `DB_PATH` | `./hexintel.db` | SQLite file location |
 | `RETENTION_DAYS` | `90` | Days before old items are purged |
 | `NVD_PAGE_SIZE` | `200` | CVEs per NVD API page |
+
+---
+
+## Adding New Feeds
+
+1. Create a class in `ingest/` that inherits `BaseFetcher`
+2. Set `feed_id`, `feed_label`, `category`, `poll_interval`
+3. Implement `async def fetch(self) -> list[dict]`
+4. Register it in `ingest/scheduler.py` → `_build_fetchers()`
+
+For RSS feeds, add an entry to `VENDOR_RSS_FEEDS` in `config.py` — no code needed.
