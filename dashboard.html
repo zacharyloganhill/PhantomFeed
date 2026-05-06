@@ -135,6 +135,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .tcr{color:var(--red)}.thi{color:var(--amber)}
 
 body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px)}
+
+/* AI Panel */
+.ai-overlay{position:fixed;inset:0;background:rgba(8,10,13,.7);z-index:1000;display:none;align-items:flex-end;justify-content:flex-end}
+.ai-overlay.show{display:flex}
+.ai-panel{width:460px;height:100vh;background:var(--bg2);border-left:1px solid var(--border2);display:flex;flex-direction:column}
+.ai-hdr{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ai-title{font-size:9px;letter-spacing:2px;color:var(--teal);flex:1}
+.ai-mdl{font-size:8px;color:var(--muted)}
+.ai-x{font-family:var(--mono);font-size:11px;background:transparent;border:none;color:var(--muted);cursor:pointer;padding:0 4px;line-height:1}
+.ai-x:hover{color:var(--text)}
+.ai-qbox{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;max-height:110px;overflow-y:auto}
+.ai-qlbl{font-size:7px;letter-spacing:2px;color:var(--muted);margin-bottom:5px}
+.ai-qtxt{font-size:9px;color:var(--text);line-height:1.7}
+.ai-body{flex:1;overflow-y:auto;padding:12px 14px}
+.ai-resp{font-size:9px;line-height:1.9;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.ai-wait{color:var(--muted);font-size:9px;letter-spacing:1px}
+.ai-cur{display:inline-block;width:6px;height:11px;background:var(--teal);vertical-align:middle;animation:blink .75s step-end infinite;margin-left:2px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 </style>
 </head>
 <body>
@@ -214,8 +232,27 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
   <div class="tick-w"><div class="tick-i" id="ticker"><span style="color:var(--muted)">Connecting to ThreatPulse API...</span></div></div>
   <div class="vsep2"></div>
   <span id="sbcnt">0 items</span>
+  <div class="vsep2"></div>
+  <span id="ollama-st" class="terr">○ AI</span>
 </footer>
 
+</div>
+
+<div class="ai-overlay" id="ai-overlay" onclick="if(event.target===this)closeAi()">
+  <div class="ai-panel">
+    <div class="ai-hdr">
+      <span class="ai-title">AI ANALYST</span>
+      <span class="ai-mdl" id="ai-mdl-lbl">—</span>
+      <button class="ai-x" onclick="closeAi()">✕</button>
+    </div>
+    <div class="ai-qbox">
+      <div class="ai-qlbl">PROMPT</div>
+      <div class="ai-qtxt" id="ai-qtxt"></div>
+    </div>
+    <div class="ai-body" id="ai-body">
+      <div class="ai-wait">Waiting...</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -439,7 +476,61 @@ function updateTicker(){
   }).join('<span style="color:var(--dim);margin:0 6px">|</span>');
 }
 
-(async()=>{showSkel();await Promise.all([loadStats(),load()]);sched();})();
+const OLLAMA='/api/ollama';
+let ollamaModel=null;
+
+async function loadOllamaStatus(){
+  const el=document.getElementById('ollama-st');
+  try{
+    const r=await fetch(OLLAMA+'/api/tags',{signal:AbortSignal.timeout(3000)});
+    if(!r.ok)throw new Error();
+    const d=await r.json();
+    const models=(d.models||[]);
+    if(models.length){
+      ollamaModel=models[0].name;
+      const short=ollamaModel.split(':')[0];
+      el.textContent='● AI: '+short;el.className='tok';
+      document.getElementById('ai-mdl-lbl').textContent=ollamaModel;
+    }else{el.textContent='○ AI: NO MODELS';}
+  }catch(err){el.textContent='○ AI: OFFLINE';}
+}
+
+function showAiPanel(prompt){
+  document.getElementById('ai-qtxt').textContent=prompt;
+  document.getElementById('ai-body').innerHTML='<div class="ai-wait" id="ai-wait">● Thinking<span class="ai-cur"></span></div>';
+  document.getElementById('ai-overlay').classList.add('show');
+}
+
+function closeAi(){document.getElementById('ai-overlay').classList.remove('show');}
+
+async function sendPrompt(text){
+  if(!ollamaModel){navigator.clipboard?.writeText(text);alert('Ollama offline — prompt copied to clipboard');return;}
+  showAiPanel(text);
+  try{
+    const r=await fetch(OLLAMA+'/api/chat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:ollamaModel,messages:[{role:'user',content:text}],stream:true})
+    });
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const reader=r.body.getReader();const dec=new TextDecoder();
+    let out='';
+    const body=document.getElementById('ai-body');
+    body.innerHTML='<div class="ai-resp" id="ai-resp"></div>';
+    const respEl=document.getElementById('ai-resp');
+    while(true){
+      const{done,value}=await reader.read();
+      if(done)break;
+      for(const line of dec.decode(value).split('\n')){
+        if(!line.trim())continue;
+        try{const obj=JSON.parse(line);if(obj.message?.content){out+=obj.message.content;respEl.textContent=out;}}catch(err2){}
+      }
+    }
+  }catch(err){
+    document.getElementById('ai-body').innerHTML=`<div class="ai-resp" style="color:var(--red)">Error: ${e(String(err.message||err))}</div>`;
+  }
+}
+
+(async()=>{showSkel();await Promise.all([loadStats(),load(),loadOllamaStatus()]);sched();})();
 </script>
 </body>
 </html>

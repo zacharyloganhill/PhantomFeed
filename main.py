@@ -13,9 +13,11 @@ API docs: http://localhost:8000/docs
 import asyncio
 from contextlib import asynccontextmanager
 
+import httpx
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 from rich.panel import Panel
@@ -92,6 +94,24 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1", tags=["Threat Feed"])
+
+
+@app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
+async def ollama_proxy(path: str, request: Request):
+    body = await request.body()
+
+    async def _stream():
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream(
+                method=request.method,
+                url=f"http://localhost:11434/{path}",
+                content=body,
+                headers={"Content-Type": request.headers.get("content-type", "application/json")},
+            ) as resp:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+
+    return StreamingResponse(_stream(), media_type="application/json")
 
 
 @app.get("/", include_in_schema=False)
