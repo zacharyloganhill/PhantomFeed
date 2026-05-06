@@ -34,6 +34,7 @@ from api.remediation_routes import router as rem_router
 from api.analytics_routes import router as analytics_router
 from api.ioc_routes import router as ioc_router
 from api.upload_routes import router as upload_router
+from api.export_routes import router as export_router
 
 console = Console()
 
@@ -113,6 +114,7 @@ app.include_router(rem_router, prefix="/api/v1", tags=["Remediation"])
 app.include_router(analytics_router, prefix="/api/v1", tags=["Analytics"])
 app.include_router(ioc_router, prefix="/api/v1", tags=["IOC"])
 app.include_router(upload_router, prefix="/api/v1", tags=["Upload"])
+app.include_router(export_router, prefix="/api/v1", tags=["Export"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
