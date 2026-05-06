@@ -87,7 +87,7 @@ VENDOR_RSS_FEEDS = [
 ]
 
 # ── Threat Intel Feeds ────────────────────────────────────────────────────────
-ABUSE_CH_URLHAUS = "https://urlhaus-api.abuse.ch/v1/urls/recent/"
+ABUSE_CH_URLHAUS = "https://urlhaus.abuse.ch/downloads/json_recent/"
 ABUSE_CH_FEODO = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
 OTX_PULSES_URL = "https://otx.alienvault.com/api/v1/pulses/subscribed"
 URLHAUS_API_KEY = os.getenv("URLHAUS_API_KEY", "")  # free key at https://auth.abuse.ch/

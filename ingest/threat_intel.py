@@ -21,7 +21,7 @@ console = Console()
 class URLHausFetcher(BaseFetcher):
     """
     abuse.ch URLhaus — tracks malware distribution and C2 URLs.
-    Requires a free API key from https://auth.abuse.ch/
+    Uses the public JSON download endpoint — no API key required.
     """
 
     feed_id = "urlhaus"
@@ -30,44 +30,37 @@ class URLHausFetcher(BaseFetcher):
     poll_interval = config.POLL_FAST
 
     async def fetch(self) -> list[dict]:
-        if not config.URLHAUS_API_KEY:
-            console.print(
-                "[yellow][urlhaus] No URLHAUS_API_KEY — skipping. "
-                "Get a free key at https://auth.abuse.ch/[/]"
-            )
+        # Public download: dict keyed by URL ID, each value is a list with one entry
+        data = await self.fetch_json(config.ABUSE_CH_URLHAUS)
+        if not isinstance(data, dict):
             return []
 
-        data = await self.fetch_json_post(
-            config.ABUSE_CH_URLHAUS,
-            data={"query": "get_urls", "limit": "30"},
-            headers={"Auth-Key": config.URLHAUS_API_KEY},
-        )
-        if not data:
-            return []
-
-        query_status = data.get("query_status", "is_available")
-        if query_status not in ("is_available", "no_results"):
-            console.print(f"[yellow][urlhaus] Unexpected query_status: {query_status}[/]")
-            return []
-
-        urls = data.get("urls", [])
         items = []
-        for u in urls[:30]:
-            item = self._normalize(u)
+        for url_id, entries in list(data.items())[:50]:
+            if not isinstance(entries, list) or not entries:
+                continue
+            entry = {**entries[0], "id": url_id}
+            item = self._normalize(entry)
             if item:
                 items.append(item)
         return items
 
     def _normalize(self, u: dict) -> Optional[dict]:
+        from urllib.parse import urlparse
         url = u.get("url", "")
         if not url:
             return None
 
-        url_status = u.get("url_status", "online")
-        tags_raw = u.get("tags", []) or []
-        threat = u.get("threat", "malware_download")
-        host = u.get("host", "")
-        date_added = (u.get("date_added", "") or "")[:10]
+        try:
+            host = urlparse(url).netloc or url
+        except Exception:
+            host = url
+
+        url_status = u.get("url_status") or "online"
+        tags_raw = u.get("tags") or []
+        threat = u.get("threat") or "malware_download"
+        date_added = (u.get("dateadded", "") or "")[:10]
+        urlhaus_link = u.get("urlhaus_link") or f"https://urlhaus.abuse.ch/url/{u.get('id', '')}/"
 
         tags = ["URLhaus", "Malware"]
         if isinstance(tags_raw, list):
@@ -86,14 +79,14 @@ class URLHausFetcher(BaseFetcher):
             "vendor": "abuse.ch",
             "product": threat.replace("_", " ").title(),
             "description": (
-                f"Active malware distribution URL detected by URLhaus.\n"
+                f"Malware distribution URL tracked by URLhaus.\n"
                 f"URL: {url}\n"
                 f"Host: {host}\n"
                 f"Threat type: {threat}\n"
                 f"Status: {url_status}\n"
                 f"Tags: {', '.join(str(t) for t in tags_raw)}"
             ),
-            "url": f"https://urlhaus.abuse.ch/url/{u.get('id', '')}",
+            "url": urlhaus_link,
             "published_at": date_added,
             "tags": tags[:8],
             "cve_ids": [],
