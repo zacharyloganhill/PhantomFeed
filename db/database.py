@@ -164,6 +164,22 @@ CREATE TABLE IF NOT EXISTS webhook_errors (
 );
 """
 
+CREATE_UPLOAD_LOG = """
+CREATE TABLE IF NOT EXISTS upload_log (
+  id               TEXT PRIMARY KEY,
+  filename         TEXT NOT NULL,
+  file_type        TEXT NOT NULL,
+  client_id        TEXT,
+  status           TEXT DEFAULT 'pending',
+  records_total    INTEGER DEFAULT 0,
+  records_imported INTEGER DEFAULT 0,
+  records_skipped  INTEGER DEFAULT 0,
+  error_message    TEXT,
+  uploaded_at      TEXT,
+  completed_at     TEXT
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -192,6 +208,7 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_IOC_CACHE)
     await _db.execute(CREATE_WEBHOOK_CONFIGS)
     await _db.execute(CREATE_WEBHOOK_ERRORS)
+    await _db.execute(CREATE_UPLOAD_LOG)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
     # Additive migrations — silently ignore if column already exists
