@@ -10,15 +10,18 @@ Covers:
 
 from datetime import datetime, timezone
 from typing import Optional
+from rich.console import Console
 
 import config
 from ingest.base import BaseFetcher
+
+console = Console()
 
 
 class URLHausFetcher(BaseFetcher):
     """
     abuse.ch URLhaus — tracks malware distribution and C2 URLs.
-    No API key required. Excellent free threat intel.
+    Requires a free API key from https://auth.abuse.ch/
     """
 
     feed_id = "urlhaus"
@@ -27,14 +30,24 @@ class URLHausFetcher(BaseFetcher):
     poll_interval = config.POLL_FAST
 
     async def fetch(self) -> list[dict]:
-        headers = {}
-        if config.URLHAUS_API_KEY:
-            headers["Auth-Key"] = config.URLHAUS_API_KEY
-        data = await self.fetch_json(config.ABUSE_CH_URLHAUS, headers=headers)
+        if not config.URLHAUS_API_KEY:
+            console.print(
+                "[yellow][urlhaus] No URLHAUS_API_KEY — skipping. "
+                "Get a free key at https://auth.abuse.ch/[/]"
+            )
+            return []
+
+        data = await self.fetch_json_post(
+            config.ABUSE_CH_URLHAUS,
+            data={"query": "get_urls", "limit": "30"},
+            headers={"Auth-Key": config.URLHAUS_API_KEY},
+        )
         if not data:
             return []
-        query_status = data.get("query_status")
-        if query_status and query_status not in ("is_available",):
+
+        query_status = data.get("query_status", "is_available")
+        if query_status not in ("is_available", "no_results"):
+            console.print(f"[yellow][urlhaus] Unexpected query_status: {query_status}[/]")
             return []
 
         urls = data.get("urls", [])
@@ -101,6 +114,10 @@ class OTXFetcher(BaseFetcher):
 
     async def fetch(self) -> list[dict]:
         if not config.OTX_API_KEY:
+            console.print(
+                "[yellow][otx] No OTX_API_KEY — skipping. "
+                "Get a free key at https://otx.alienvault.com[/]"
+            )
             return []
 
         headers = {"X-OTX-API-KEY": config.OTX_API_KEY}
@@ -164,6 +181,69 @@ class OTXFetcher(BaseFetcher):
             "tags": [t for t in tags if t][:8],
             "cve_ids": cve_ids,
             "raw": {"adversary": adversary, "indicator_count": indicator_count},
+        }
+
+
+class FeodoFetcher(BaseFetcher):
+    """
+    abuse.ch Feodo Tracker — botnet C2 server IP blocklist.
+    Public endpoint, no API key required.
+    Tracks Emotet, QakBot, AsyncRAT, Cobalt Strike, and similar botnet infrastructure.
+    """
+
+    feed_id = "feodo"
+    feed_label = "abuse.ch Feodo Tracker"
+    category = "malware"
+    poll_interval = config.POLL_SLOW
+
+    async def fetch(self) -> list[dict]:
+        data = await self.fetch_json(config.ABUSE_CH_FEODO)
+        if not isinstance(data, list):
+            return []
+        items = []
+        for entry in data[:60]:
+            item = self._normalize(entry)
+            if item:
+                items.append(item)
+        return items
+
+    def _normalize(self, entry: dict) -> Optional[dict]:
+        ip = entry.get("ip_address", "")
+        if not ip:
+            return None
+
+        malware = entry.get("malware", "Unknown")
+        status = entry.get("status", "unknown")
+        port = entry.get("port", "")
+        country = entry.get("country", "")
+        as_name = entry.get("as_name", "")
+        first_seen = (entry.get("first_seen", "") or "")[:10]
+        last_online = entry.get("last_online", "") or ""
+
+        severity = "HIGH" if status == "online" else "MEDIUM"
+
+        return {
+            "feed_id": self.feed_id,
+            "feed_label": self.feed_label,
+            "category": self.category,
+            "severity": severity,
+            "cvss": None,
+            "title": f"C2 Infrastructure [{malware}]: {ip}:{port}",
+            "vendor": "abuse.ch",
+            "product": malware,
+            "description": (
+                f"Botnet C2 server tracked by Feodo Tracker.\n"
+                f"IP: {ip}  Port: {port}\n"
+                f"Malware family: {malware}\n"
+                f"Status: {status}\n"
+                f"Country: {country} ({as_name})\n"
+                f"Last seen online: {last_online}"
+            ),
+            "url": f"https://feodotracker.abuse.ch/browse/host/{ip}/",
+            "published_at": first_seen,
+            "tags": ["Feodo Tracker", "C2", "Botnet", malware],
+            "cve_ids": [],
+            "raw": {"ip": ip, "port": port, "status": status, "malware": malware},
         }
 
 

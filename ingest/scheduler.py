@@ -15,7 +15,7 @@ import config
 from ingest.nvd import NVDFetcher
 from ingest.cisa import CISAKEVFetcher, CISAAdvisoriesFetcher, CISAICSFetcher
 from ingest.rss_feeds import build_all_vendor_fetchers
-from ingest.threat_intel import URLHausFetcher, OTXFetcher, NPMAdvisoryFetcher, PyPIAdvisoryFetcher
+from ingest.threat_intel import URLHausFetcher, OTXFetcher, FeodoFetcher, NPMAdvisoryFetcher, PyPIAdvisoryFetcher
 
 console = Console()
 scheduler: Optional[AsyncIOScheduler] = None
@@ -35,6 +35,7 @@ def _build_fetchers() -> dict:
         CISAICSFetcher(),
         URLHausFetcher(),
         OTXFetcher(),
+        FeodoFetcher(),
         NPMAdvisoryFetcher(),
         PyPIAdvisoryFetcher(),
     ]:

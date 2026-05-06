@@ -49,6 +49,19 @@ class BaseFetcher(ABC):
             console.print(f"[red][{self.feed_id}] Unexpected error: {e}[/]")
         return None
 
+    async def fetch_json_post(self, url: str, data: dict = None, json_body: dict = None, headers: dict = None) -> Optional[dict]:
+        try:
+            r = await self.client.post(url, data=data, json=json_body, headers=headers)
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as e:
+            console.print(f"[red][{self.feed_id}] HTTP {e.response.status_code} for {url}[/]")
+        except httpx.RequestError as e:
+            console.print(f"[yellow][{self.feed_id}] Request error: {e}[/]")
+        except Exception as e:
+            console.print(f"[red][{self.feed_id}] Unexpected error: {e}[/]")
+        return None
+
     async def fetch_text(self, url: str, headers: dict = None) -> Optional[str]:
         try:
             r = await self.client.get(url, headers=headers)
