@@ -13,24 +13,53 @@ import config
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS threat_items (
+    id              TEXT PRIMARY KEY,
+    feed_id         TEXT NOT NULL,
+    feed_label      TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    severity        TEXT NOT NULL DEFAULT 'INFO',
+    cvss            REAL,
+    title           TEXT NOT NULL,
+    vendor          TEXT,
+    product         TEXT,
+    description     TEXT,
+    url             TEXT,
+    published_at    TEXT,
+    fetched_at      TEXT NOT NULL,
+    tags            TEXT DEFAULT '[]',
+    cve_ids         TEXT DEFAULT '[]',
+    is_new          INTEGER DEFAULT 1,
+    is_read         INTEGER DEFAULT 0,
+    raw             TEXT,
+    risk_score      REAL,
+    compliance_tags TEXT DEFAULT '[]'
+);
+"""
+
+MIGRATIONS = [
+    "ALTER TABLE threat_items ADD COLUMN risk_score REAL;",
+    "ALTER TABLE threat_items ADD COLUMN compliance_tags TEXT DEFAULT '[]';",
+]
+
+CREATE_CLIENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS clients (
     id            TEXT PRIMARY KEY,
-    feed_id       TEXT NOT NULL,
-    feed_label    TEXT NOT NULL,
-    category      TEXT NOT NULL,
-    severity      TEXT NOT NULL DEFAULT 'INFO',
-    cvss          REAL,
-    title         TEXT NOT NULL,
-    vendor        TEXT,
-    product       TEXT,
-    description   TEXT,
-    url           TEXT,
-    published_at  TEXT,
-    fetched_at    TEXT NOT NULL,
-    tags          TEXT DEFAULT '[]',
-    cve_ids       TEXT DEFAULT '[]',
-    is_new        INTEGER DEFAULT 1,
-    is_read       INTEGER DEFAULT 0,
-    raw           TEXT
+    name          TEXT NOT NULL,
+    contact_email TEXT,
+    stack_profile TEXT DEFAULT '{}',
+    created_at    TEXT NOT NULL
+);
+"""
+
+CREATE_USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'analyst',
+    client_id     TEXT,
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 """
 
@@ -53,8 +82,19 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute("PRAGMA journal_mode=WAL;")
     await _db.execute("PRAGMA foreign_keys=ON;")
     await _db.execute(CREATE_TABLE)
+    await _db.execute(CREATE_CLIENTS_TABLE)
+    await _db.execute(CREATE_USERS_TABLE)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
+    # Additive migrations — silently ignore if column already exists
+    for migration in MIGRATIONS:
+        try:
+            await _db.execute(migration)
+        except Exception:
+            pass
+    await _db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_risk_score ON threat_items(risk_score DESC);"
+    )
     await _db.commit()
     return _db
 
@@ -93,9 +133,9 @@ async def upsert_item(item: dict) -> bool:
     INSERT OR IGNORE INTO threat_items
         (id, feed_id, feed_label, category, severity, cvss, title,
          vendor, product, description, url, published_at, fetched_at,
-         tags, cve_ids, is_new, is_read, raw)
+         tags, cve_ids, is_new, is_read, raw, risk_score, compliance_tags)
     VALUES
-        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?)
+        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?,?)
     """
     params = (
         item_id,
@@ -114,10 +154,32 @@ async def upsert_item(item: dict) -> bool:
         json.dumps(item.get("tags", [])),
         json.dumps(item.get("cve_ids", [])),
         json.dumps(item.get("raw")),
+        item.get("risk_score"),
+        json.dumps(item.get("compliance_tags", [])),
     )
     cursor = await db.execute(sql, params)
     await db.commit()
     return cursor.rowcount > 0
+
+
+async def update_risk_score(item_id: str, risk_score: float):
+    """Update risk_score for an existing item (rescore endpoint)."""
+    db = get_db()
+    await db.execute(
+        "UPDATE threat_items SET risk_score = ? WHERE id = ?",
+        (risk_score, item_id),
+    )
+    await db.commit()
+
+
+async def update_compliance_tags(item_id: str, tags: list[str]):
+    """Update compliance_tags for an existing item."""
+    db = get_db()
+    await db.execute(
+        "UPDATE threat_items SET compliance_tags = ? WHERE id = ?",
+        (json.dumps(tags), item_id),
+    )
+    await db.commit()
 
 
 async def get_items(
@@ -126,6 +188,9 @@ async def get_items(
     feed_id: Optional[str] = None,
     is_new: Optional[bool] = None,
     search: Optional[str] = None,
+    compliance: Optional[str] = None,
+    client_id: Optional[str] = None,
+    sort: Optional[str] = None,
     limit: int = 200,
     offset: int = 0,
 ) -> list[dict]:
@@ -153,12 +218,21 @@ async def get_items(
         )
         q = f"%{search}%"
         params.extend([q, q, q, q, q])
+    if compliance:
+        # compliance_tags is a JSON array; filter items that contain the tag
+        tag = compliance.lower().strip()
+        conditions.append("LOWER(compliance_tags) LIKE ?")
+        params.append(f"%{tag}%")
+    if client_id:
+        # Reserved: filter by client stack profile (applied via apply_stack_filter)
+        pass
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    sql = f"""
-        SELECT * FROM threat_items
-        {where}
-        ORDER BY
+
+    if sort == "risk":
+        order = "ORDER BY COALESCE(risk_score, 0) DESC, published_at DESC"
+    else:
+        order = """ORDER BY
             CASE severity
                 WHEN 'CRITICAL' THEN 1
                 WHEN 'HIGH'     THEN 2
@@ -166,9 +240,9 @@ async def get_items(
                 WHEN 'LOW'      THEN 4
                 ELSE 5
             END,
-            published_at DESC
-        LIMIT ? OFFSET ?
-    """
+            published_at DESC"""
+
+    sql = f"SELECT * FROM threat_items {where} {order} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     async with db.execute(sql, params) as cursor:
         rows = await cursor.fetchall()
@@ -252,14 +326,111 @@ async def purge_old_items():
     return cursor.rowcount
 
 
+# ── Client CRUD ───────────────────────────────────────────────────────────────
+
+async def create_client(name: str, contact_email: str = "", stack_profile: dict = None) -> dict:
+    import uuid
+    db = get_db()
+    client_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        "INSERT INTO clients (id, name, contact_email, stack_profile, created_at) VALUES (?,?,?,?,?)",
+        (client_id, name, contact_email, json.dumps(stack_profile or {}), now),
+    )
+    await db.commit()
+    return {"id": client_id, "name": name, "contact_email": contact_email,
+            "stack_profile": stack_profile or {}, "created_at": now}
+
+
+async def get_clients() -> list[dict]:
+    db = get_db()
+    async with db.execute("SELECT * FROM clients ORDER BY created_at DESC") as cur:
+        rows = await cur.fetchall()
+    return [_client_row(r) for r in rows]
+
+
+async def get_client(client_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute("SELECT * FROM clients WHERE id = ?", (client_id,)) as cur:
+        row = await cur.fetchone()
+    return _client_row(row) if row else None
+
+
+async def update_client(client_id: str, name: str = None, contact_email: str = None,
+                        stack_profile: dict = None) -> Optional[dict]:
+    db = get_db()
+    sets, params = [], []
+    if name is not None:
+        sets.append("name = ?"); params.append(name)
+    if contact_email is not None:
+        sets.append("contact_email = ?"); params.append(contact_email)
+    if stack_profile is not None:
+        sets.append("stack_profile = ?"); params.append(json.dumps(stack_profile))
+    if not sets:
+        return await get_client(client_id)
+    params.append(client_id)
+    await db.execute(f"UPDATE clients SET {', '.join(sets)} WHERE id = ?", params)
+    await db.commit()
+    return await get_client(client_id)
+
+
+async def delete_client(client_id: str):
+    db = get_db()
+    await db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    await db.commit()
+
+
+def _client_row(row) -> dict:
+    d = dict(row)
+    if d.get("stack_profile"):
+        try:
+            d["stack_profile"] = json.loads(d["stack_profile"])
+        except Exception:
+            d["stack_profile"] = {}
+    return d
+
+
+# ── User CRUD ─────────────────────────────────────────────────────────────────
+
+async def create_user(username: str, password_hash: str, role: str = "analyst",
+                      client_id: str = None) -> dict:
+    import uuid
+    db = get_db()
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        "INSERT INTO users (id, username, password_hash, role, client_id, created_at) VALUES (?,?,?,?,?,?)",
+        (user_id, username, password_hash, role, client_id, now),
+    )
+    await db.commit()
+    return {"id": user_id, "username": username, "role": role,
+            "client_id": client_id, "created_at": now}
+
+
+async def get_user_by_username(username: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute("SELECT * FROM users WHERE username = ?", (username,)) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_user_by_id(user_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 def _row_to_dict(row) -> dict:
     d = dict(row)
-    for field in ("tags", "cve_ids", "raw"):
+    for field in ("tags", "cve_ids", "raw", "compliance_tags"):
         if d.get(field):
             try:
                 d[field] = json.loads(d[field])
             except Exception:
                 pass
+        elif field == "compliance_tags":
+            d[field] = []
     d["is_new"] = bool(d.get("is_new"))
     d["is_read"] = bool(d.get("is_read"))
     return d

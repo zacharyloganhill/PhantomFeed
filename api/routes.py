@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from typing import Optional
 from db import database as db
 from ingest import scheduler
+from ingest.risk_score import score_item
 
 router = APIRouter()
 
@@ -18,6 +19,8 @@ async def list_items(
     feed_id: Optional[str] = Query(None, description="Filter by specific feed ID"),
     is_new: Optional[bool] = Query(None, description="Filter to new/unseen items only"),
     search: Optional[str] = Query(None, description="Full-text search across title, desc, vendor, tags"),
+    compliance: Optional[str] = Query(None, description="Filter by compliance tag: cmmc, nist, cis (partial match)"),
+    sort: Optional[str] = Query(None, description="Sort order: 'risk' for risk score descending"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -27,6 +30,8 @@ async def list_items(
         feed_id=feed_id,
         is_new=is_new,
         search=search,
+        compliance=compliance,
+        sort=sort,
         limit=limit,
         offset=offset,
     )
@@ -84,3 +89,30 @@ async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks):
 async def purge():
     deleted = await db.purge_old_items()
     return {"status": "ok", "deleted": deleted}
+
+
+@router.post("/items/{item_id}/rescore", summary="Recompute risk score for a single item")
+async def rescore_item(item_id: str):
+    item = await db.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    rs = await score_item(item)
+    await db.update_risk_score(item_id, rs)
+    return {"item_id": item_id, "risk_score": rs}
+
+
+async def _rescore_all_task():
+    items = await db.get_items(limit=2000)
+    for item in items:
+        try:
+            rs = await score_item(item)
+            if rs > 0:
+                await db.update_risk_score(item["id"], rs)
+        except Exception:
+            pass
+
+
+@router.post("/rescore-all", summary="Recompute risk scores for all items in the background")
+async def rescore_all(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_rescore_all_task)
+    return {"status": "rescore_started"}

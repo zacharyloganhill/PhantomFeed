@@ -147,12 +147,37 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Weekly email digest — every Monday at 08:00 UTC
+    from apscheduler.triggers.cron import CronTrigger
+    scheduler.add_job(
+        _send_weekly_digests,
+        trigger=CronTrigger(day_of_week="mon", hour=8, minute=0),
+        id="weekly_digest",
+        name="Weekly Email Digest",
+        replace_existing=True,
+    )
+
     scheduler.start()
     console.print(
         f"[green]✓ Scheduler started[/] — "
         f"{len(fast_feeds)} fast feeds (every {config.POLL_FAST}m), "
         f"{len(slow_feeds)} slow feeds (every {config.POLL_SLOW}m)"
     )
+
+
+async def _send_weekly_digests():
+    """Send weekly email digests to all clients with a contact_email."""
+    from db import database as db
+    from reports.email_digest import send_client_digest
+    from ingest.risk_score import score_item
+
+    clients = await db.get_clients()
+    items = await db.get_items(limit=500, sort="risk")
+    for client in clients:
+        if not client.get("contact_email"):
+            continue
+        result = await send_client_digest(client, items, days=7)
+        console.print(f"[cyan]Digest → {client['name']}: {result.get('status')}[/]")
 
 
 def stop_scheduler():

@@ -196,6 +196,12 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
   </div>
   <div class="slabel" style="margin-top:2px">Quick</div>
   <div class="ni" data-sp="new" onclick="navSp(this)"><span class="ndot" style="background:var(--green)"></span>Unread Only<span class="nc fresh" id="c-new">—</span></div>
+  <div class="slabel" style="margin-top:2px">Compliance</div>
+  <div id="compnav">
+    <div class="ni" data-comp="CMMC" onclick="navComp(this)"><span class="ndot" style="background:var(--purple)"></span>CMMC 2.0</div>
+    <div class="ni" data-comp="NIST" onclick="navComp(this)"><span class="ndot" style="background:var(--blue)"></span>NIST 800-53</div>
+    <div class="ni" data-comp="CIS" onclick="navComp(this)"><span class="ndot" style="background:var(--green)"></span>CIS Controls v8</div>
+  </div>
 </nav>
 
 <!-- FEED PANEL -->
@@ -212,9 +218,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
     <button class="fbtn hi" onclick="fltSev(this,'HIGH')">HIGH</button>
     <button class="fbtn" onclick="fltSev(this,'MEDIUM')">MEDIUM</button>
     <div style="flex:1"></div>
-    <button class="fbtn" onclick="doSort('date')">NEWEST</button>
-    <button class="fbtn" onclick="doSort('severity')">SEVERITY</button>
-    <button class="fbtn" onclick="doSort('cvss')">CVSS ↓</button>
+    <button class="fbtn" id="sort-date" onclick="doSort('date')">NEWEST</button>
+    <button class="fbtn" id="sort-sev" onclick="doSort('severity')">SEVERITY</button>
+    <button class="fbtn" id="sort-cvss" onclick="doSort('cvss')">CVSS ↓</button>
+    <button class="fbtn" id="sort-risk" onclick="doSort('risk')" style="border-color:rgba(155,142,245,.4);color:var(--purple)">RISK ↓</button>
   </div>
   <div class="offline" id="ofl">⚠ Backend offline — run: <code style="font-family:var(--mono);font-size:8px">python main.py</code></div>
   <div class="flist" id="flist"></div>
@@ -259,7 +266,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 const API='http://localhost:8000/api/v1';
 const SC={CRITICAL:'#f0595a',HIGH:'#e8a530',MEDIUM:'#4d9de0',LOW:'#4e5d72',INFO:'#9b8ef5'};
 const SO={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3,INFO:4};
-let S={items:[],sel:null,sev:'all',cat:null,sp:null,q:'',sort:'date',offset:0,lim:100,auto:true};
+let S={items:[],sel:null,sev:'all',cat:null,sp:null,comp:null,q:'',sort:'date',offset:0,lim:100,auto:true};
 let srchT=null,autoT=null;
 
 async function api(path,opts={}){
@@ -284,6 +291,8 @@ async function load(app=false){
   if(S.cat)p.set('category',S.cat);
   if(S.sp==='new')p.set('is_new','true');
   if(S.q)p.set('search',S.q);
+  if(S.comp)p.set('compliance',S.comp);
+  if(S.sort==='risk')p.set('sort','risk');
   const d=await api('/items?'+p);
   if(!d){render(app?S.items:[]);return;}
   S.items=app?[...S.items,...(d.items||[])]:d.items||[];
@@ -321,6 +330,7 @@ function sorted(){
   const a=[...S.items];
   if(S.sort==='severity')return a.sort((x,y)=>(SO[x.severity]||5)-(SO[y.severity]||5));
   if(S.sort==='cvss')return a.sort((x,y)=>(y.cvss||0)-(x.cvss||0));
+  if(S.sort==='risk')return a.sort((x,y)=>(y.risk_score||0)-(x.risk_score||0));
   return a.sort((x,y)=>(y.published_at||'').localeCompare(x.published_at||''));
 }
 
@@ -345,6 +355,7 @@ function render(items){
         <span>${e(i.vendor||'')}</span>
         <span>${i.published_at||''}</span>
         ${i.cvss?`<span style="font-size:8px;font-weight:700;color:${cv}">CVSS ${i.cvss}</span>`:''}
+        ${i.risk_score!=null?`<span style="font-size:8px;font-weight:700;color:${riskColor(i.risk_score)}">RISK ${i.risk_score.toFixed(1)}</span>`:''}
         ${tags.map(t=>`<span class="itag">${e(t)}</span>`).join('')}
       </div>
     </div>`;
@@ -385,7 +396,9 @@ function renderDetail(i){
     <div class="drow"><span class="dkey">Published</span><span class="dval">${i.published_at||'—'}</span></div>
     ${cves.length?`<div class="drow"><span class="dkey">CVE(s)</span><span class="dval" style="color:var(--amber)">${cves.slice(0,4).join(', ')}</span></div>`:''}
     ${i.cvss?`<div class="cbar-w"><span class="dkey" style="font-size:9px">CVSS</span><div class="cbar-t"><div class="cbar-f" style="width:${cw}%;background:${cc}"></div></div><span style="font-size:10px;font-weight:700;color:${cc}">${i.cvss}</span></div>`:''}
+    ${i.risk_score!=null?`<div class="drow" style="margin-top:5px"><span class="dkey">Risk Score</span><span class="dval" style="font-weight:700;font-size:13px;color:${riskColor(i.risk_score)}">${i.risk_score.toFixed(1)} <span style="font-size:9px;color:var(--muted)">/ 10</span></span></div>`:''}
   </div>
+  ${(i.compliance_tags||[]).length?`<div class="dsec"><div class="dlabel">Compliance Mapping</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${(i.compliance_tags||[]).map(t=>compliancePill(t)).join('')}</div></div>`:''}
   ${i.description?`<div class="dsec"><div class="dlabel">Summary</div><div class="dbody">${e(i.description)}</div></div>`:''}
   ${aff.length?`<div class="dsec"><div class="dlabel">Affected Assets</div><ul class="dlist">${aff.slice(0,8).map(a=>`<li>${e(a)}</li>`).join('')}</ul></div>`:''}
   ${refs.length?`<div class="dsec"><div class="dlabel">References</div>${refs.slice(0,4).map(r=>`<a class="alink" href="${e(r)}" target="_blank">${e(r)}</a>`).join('')}</div>`:''}
@@ -412,6 +425,16 @@ function qa(t,title,v,x){
 function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function esc2(s){return String(s||'').replace(/'/g,"\\'").replace(/"/g,'').slice(0,120);}
 
+function riskColor(r){if(r>=8)return'var(--red)';if(r>=6)return'var(--amber)';if(r>=3)return'var(--blue)';return'var(--muted)';}
+
+function compliancePill(tag){
+  const colors={CMMC:'rgba(155,142,245,0.15)',NIST:'rgba(77,157,224,0.15)',CIS:'rgba(61,214,140,0.15)'};
+  const border={CMMC:'var(--purple)',NIST:'var(--blue)',CIS:'var(--green)'};
+  const text={CMMC:'var(--purple)',NIST:'var(--blue)',CIS:'var(--green)'};
+  const key=Object.keys(colors).find(k=>tag.startsWith(k))||'CMMC';
+  return `<span style="font-size:8px;padding:2px 6px;border:1px solid ${border[key]};color:${text[key]};background:${colors[key]}">${e(tag)}</span>`;
+}
+
 function navSev(el){
   document.querySelectorAll('#sevnav .ni').forEach(x=>x.classList.remove('active'));
   el.classList.add('active');
@@ -433,13 +456,26 @@ function navSp(el){
   S.sp=el.classList.contains('active')?el.dataset.sp:null;
   S.offset=0;load();
 }
+function navComp(el){
+  document.querySelectorAll('#compnav .ni').forEach(x=>x.classList.remove('active'));
+  el.classList.toggle('active');
+  S.comp=el.classList.contains('active')?el.dataset.comp:null;
+  S.offset=0;load();
+}
 function fltSev(btn,v){
   document.querySelectorAll('.ffilters .fbtn').forEach(b=>{if(['ALL','CRITICAL','HIGH','MEDIUM'].includes(b.textContent))b.classList.remove('on');});
   btn.classList.toggle('on');
   S.sev=btn.classList.contains('on')?v:'all';
   S.offset=0;load();
 }
-function doSort(s){S.sort=s;render();}
+function doSort(s){
+  S.sort=s;
+  document.querySelectorAll('.ffilters .fbtn[id^="sort-"]').forEach(b=>b.classList.remove('on'));
+  const btn=document.getElementById('sort-'+s);
+  if(btn)btn.classList.add('on');
+  // Risk sort requires an API round-trip (server-side ordering by risk_score)
+  if(s==='risk'){S.offset=0;load();}else{render();}
+}
 function onSearch(){clearTimeout(srchT);srchT=setTimeout(()=>{S.q=document.getElementById('srch').value.trim();S.offset=0;load();},380);}
 function more(){S.offset+=S.lim;load(true);}
 

@@ -27,6 +27,8 @@ import config
 from db import database as db
 from ingest import scheduler
 from api.routes import router
+from api.auth_routes import router as auth_router
+from api.admin_routes import router as admin_router
 
 console = Console()
 
@@ -45,6 +47,11 @@ async def lifespan(app: FastAPI):
     # Connect to database
     await db.connect()
     console.print("[green]✓ Database connected[/]")
+
+    # Seed admin user
+    from auth.auth import seed_admin_user
+    await seed_admin_user()
+    console.print("[green]✓ Admin user ready[/]")
 
     # Start polling scheduler
     scheduler.start_scheduler()
@@ -94,6 +101,8 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1", tags=["Threat Feed"])
+app.include_router(auth_router, prefix="/auth", tags=["Auth"])
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)

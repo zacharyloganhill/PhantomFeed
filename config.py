@@ -18,6 +18,19 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 90))
 NVD_API_KEY = os.getenv("NVD_API_KEY", "")
 OTX_API_KEY = os.getenv("OTX_API_KEY", "")
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
+SECRET_KEY     = os.getenv("SECRET_KEY", "change-me-in-production-use-a-long-random-string")
+ALGORITHM      = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 480))  # 8 hours
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "phantomfeed-admin")
+
+# ── SMTP (for email digests) ──────────────────────────────────────────────────
+SMTP_HOST     = os.getenv("SMTP_HOST", "")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))
+SMTP_USER     = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM     = os.getenv("SMTP_FROM", "")
+
 # ── Poll Intervals (minutes) ──────────────────────────────────────────────────
 POLL_FAST = int(os.getenv("POLL_INTERVAL_FAST", 15))   # KEV, NVD, zero-days
 POLL_SLOW = int(os.getenv("POLL_INTERVAL_SLOW", 60))   # Vendor RSS, threat intel

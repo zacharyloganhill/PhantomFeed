@@ -80,8 +80,10 @@ class BaseFetcher(ABC):
         ...
 
     async def run(self) -> int:
-        """Fetch, insert new items, return count of new insertions."""
+        """Fetch, insert new items, score & tag them, return count of new insertions."""
         from db import database as db
+        from compliance.mappings import tag_item
+        from ingest.risk_score import score_item
 
         console.print(f"[cyan]↓ Polling [{self.feed_label}]...[/]")
         start = datetime.utcnow()
@@ -92,10 +94,33 @@ class BaseFetcher(ABC):
             return 0
 
         new_count = 0
+        new_ids = []
         for item in items:
+            # Compliance tagging is pure in-process; add before insert
+            if not item.get("compliance_tags"):
+                item["compliance_tags"] = tag_item(item)
             inserted = await db.upsert_item(item)
             if inserted:
                 new_count += 1
+                # Stash id so we can rescore after the batch
+                new_ids.append(
+                    item.get("id") or db.make_id(
+                        item["feed_id"], item["title"], item.get("published_at", "")
+                    )
+                )
+
+        # Score new items in small concurrent batches (avoid flooding EPSS API)
+        for item in items:
+            item_id = item.get("id") or db.make_id(
+                item["feed_id"], item["title"], item.get("published_at", "")
+            )
+            if item_id in new_ids:
+                try:
+                    rs = await score_item(item)
+                    if rs > 0:
+                        await db.update_risk_score(item_id, rs)
+                except Exception:
+                    pass
 
         elapsed = (datetime.utcnow() - start).total_seconds()
         console.print(

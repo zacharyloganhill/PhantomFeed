@@ -8,3 +8,10 @@ python-dateutil>=2.9.0
 rich>=13.7.0
 pydantic>=2.7.0
 python-dotenv>=1.0.0
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1  # passlib compat — bcrypt 4.1+ breaks passlib's backend detection
+# PDF reports (optional — falls back to ReportLab, then HTML)
+weasyprint>=62.3; sys_platform != "win32"
+reportlab>=4.0.0
