@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThreatPulse — Intelligence Feed</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a0d;--bg2:#0c0f14;--bg3:#111620;--bg4:#161c28;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#c9d4e3;--muted:#4e5d72;--dim:#1e2836;
+  --teal:#00d4aa;--teal-d:rgba(0,212,170,0.08);--teal-m:rgba(0,212,170,0.15);
+  --red:#f0595a;--red-d:rgba(240,89,90,0.1);
+  --amber:#e8a530;--amber-d:rgba(232,165,48,0.1);
+  --blue:#4d9de0;--blue-d:rgba(77,157,224,0.1);
+  --purple:#9b8ef5;--green:#3dd68c;--pink:#e878a6;
+  --mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e2836;border-radius:2px}
+
+.shell{display:grid;grid-template-rows:44px 1fr 28px;grid-template-columns:200px 1fr 290px;height:100vh}
+
+/* Topbar */
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.logo-pulse{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2.4s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.logo-text{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--teal)}
+.live-tag{font-size:8px;letter-spacing:2px;color:var(--green);border:1px solid rgba(61,214,140,.35);padding:2px 6px}
+.vsep{width:1px;height:18px;background:var(--border)}
+.stat-chips{display:flex;gap:6px;flex:1}
+.chip{font-size:8px;letter-spacing:.5px;padding:2px 7px;border:1px solid}
+.chip.cr{border-color:rgba(240,89,90,.4);color:var(--red)}
+.chip.hi{border-color:rgba(232,165,48,.4);color:var(--amber)}
+.chip.me{border-color:rgba(77,157,224,.4);color:var(--blue)}
+.chip.nw{border-color:rgba(0,212,170,.4);color:var(--teal)}
+.chip.to{border-color:var(--border);color:var(--muted)}
+.tr{display:flex;align-items:center;gap:6px;margin-left:auto}
+.lsync{font-size:8px;color:var(--muted);letter-spacing:.5px}
+.bbtn{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s}
+.bbtn:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.bbtn.on{border-color:var(--teal);color:var(--teal);background:var(--teal-m)}
+
+/* Sidebar */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto}
+.slabel{font-size:8px;letter-spacing:2px;color:var(--muted);padding:12px 12px 4px;text-transform:uppercase;position:sticky;top:0;background:var(--bg2);z-index:1;border-bottom:1px solid var(--border)}
+.ni{display:flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;transition:all .12s;border-left:2px solid transparent;color:var(--muted);font-size:10px;user-select:none}
+.ni:hover{color:var(--text);background:rgba(255,255,255,.025)}
+.ni.active{color:var(--text);background:var(--teal-d);border-left-color:var(--teal)}
+.ndot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.nc{margin-left:auto;font-size:8px;background:var(--bg3);padding:1px 5px;color:var(--muted);min-width:18px;text-align:center}
+.nc.fresh{color:var(--teal);border:1px solid rgba(0,212,170,.3)}
+
+/* Feed */
+.feed-panel{overflow-y:auto;background:var(--bg);display:flex;flex-direction:column}
+.fhead{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border);padding:7px 12px;display:flex;gap:5px}
+.swrap{flex:1;position:relative}
+.sico{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none}
+.srch{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:5px 8px 5px 22px;outline:none;transition:border-color .15s}
+.srch::placeholder{color:var(--muted)}
+.srch:focus{border-color:var(--teal);background:var(--bg4)}
+.ffilters{display:flex;gap:4px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--bg)}
+.fbtn{font-family:var(--mono);font-size:8px;letter-spacing:.5px;padding:3px 7px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .12s}
+.fbtn:hover{border-color:var(--border2);color:var(--text)}
+.fbtn.on{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.fbtn.cr.on{border-color:var(--red);color:var(--red);background:var(--red-d)}
+.fbtn.hi.on{border-color:var(--amber);color:var(--amber);background:var(--amber-d)}
+.offline{display:none;background:var(--red-d);border:1px solid rgba(240,89,90,.3);padding:6px 12px;font-size:9px;color:var(--red);letter-spacing:.5px;align-items:center;gap:8px}
+.offline.show{display:flex}
+
+/* Items */
+.flist{flex:1}
+.fitem{border-bottom:1px solid var(--border);padding:9px 12px;cursor:pointer;transition:background .1s}
+.fitem:hover{background:rgba(255,255,255,.02)}
+.fitem.sel{background:var(--teal-d);border-left:2px solid var(--teal);padding-left:10px}
+.fitem.rd{opacity:.5}
+.irow1{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+.sev{font-size:8px;letter-spacing:.5px;padding:2px 5px;border:1px solid;flex-shrink:0;margin-top:1px;font-weight:600}
+.sev.CRITICAL{border-color:rgba(240,89,90,.5);color:var(--red)}
+.sev.HIGH{border-color:rgba(232,165,48,.5);color:var(--amber)}
+.sev.MEDIUM{border-color:rgba(77,157,224,.5);color:var(--blue)}
+.sev.LOW{border-color:var(--border);color:var(--muted)}
+.sev.INFO{border-color:rgba(155,142,245,.4);color:var(--purple)}
+.inew{font-size:7px;padding:2px 4px;background:var(--teal);color:#000;font-weight:700;letter-spacing:.5px;flex-shrink:0;margin-top:2px}
+.ititle{font-size:10px;color:var(--text);line-height:1.5;flex:1}
+.irow2{display:flex;gap:7px;font-size:9px;color:var(--muted);align-items:center;flex-wrap:wrap}
+.itag{font-size:8px;padding:1px 4px;border:1px solid var(--border);color:var(--muted)}
+.skel{background:var(--bg3);border-radius:2px;animation:shim 1.4s ease-in-out infinite}
+@keyframes shim{0%,100%{opacity:.3}50%{opacity:.7}}
+.skelitem{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--muted);gap:10px;text-align:center}
+.empty-ico{font-size:22px;color:var(--dim)}
+
+/* Detail */
+.detail{background:var(--bg2);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.dempty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:8px}
+.dempty-ico{font-size:26px;color:var(--dim)}
+.dsec{padding:11px 14px;border-bottom:1px solid var(--border)}
+.dlabel{font-size:8px;letter-spacing:2px;color:var(--teal);margin-bottom:7px;text-transform:uppercase}
+.dtitle{font-size:10px;color:var(--text);line-height:1.6;margin-bottom:8px}
+.dbadges{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px}
+.drow{display:grid;grid-template-columns:65px 1fr;gap:4px;font-size:9px;margin-bottom:3px}
+.dkey{color:var(--muted)}
+.dval{color:var(--text);word-break:break-word}
+.cbar-w{display:flex;align-items:center;gap:8px;margin-top:5px}
+.cbar-t{flex:1;height:3px;background:var(--border)}
+.cbar-f{height:100%;transition:width .4s}
+.dbody{font-size:9px;line-height:1.9;color:var(--muted)}
+.dlist{list-style:none}
+.dlist li{font-size:9px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)}
+.dlist li:last-child{border-bottom:none}
+.dlist li::before{content:'▸ ';color:var(--teal)}
+.alink{display:block;font-size:9px;color:var(--teal);padding:2px 0;word-break:break-all;text-decoration:none}
+.alink:hover{color:#00ffcc}
+.qbtn{display:block;width:100%;text-align:left;padding:7px 10px;margin-bottom:4px;font-family:var(--mono);font-size:9px;letter-spacing:.5px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .12s}
+.qbtn:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.lmore{text-align:center;padding:10px;border-top:1px solid var(--border)}
+.lmore button{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:5px 14px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .12s}
+.lmore button:hover{border-color:var(--teal);color:var(--teal)}
+
+/* Statusbar */
+.statusbar{grid-column:1/-1;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 14px;font-size:8px;color:var(--muted);letter-spacing:.5px}
+.vsep2{width:1px;height:10px;background:var(--border)}
+.tok{color:var(--teal)}
+.terr{color:var(--red)}
+.tick-w{overflow:hidden;flex:1}
+.tick-i{display:flex;gap:28px;animation:tkr 80s linear infinite;white-space:nowrap;width:max-content}
+.tick-i:hover{animation-play-state:paused}
+@keyframes tkr{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.ti{font-size:8px}
+.tcr{color:var(--red)}.thi{color:var(--amber)}
+
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="logo-pulse"></div>
+    <span class="logo-text">THREATPULSE</span>
+    <span class="vsep"></span>
+    <span class="live-tag">LIVE</span>
+  </div>
+  <div class="stat-chips" id="chips"><span class="chip to">Connecting...</span></div>
+  <div class="tr">
+    <span class="lsync" id="lsync">—</span>
+    <button class="bbtn" id="rfbtn" onclick="doRefresh()">↺ REFRESH</button>
+    <button class="bbtn on" id="autobtn" onclick="toggleAuto()">AUTO ON</button>
+  </div>
+</header>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="slabel">Severity</div>
+  <div id="sevnav">
+    <div class="ni active" data-sev="all" onclick="navSev(this)"><span class="ndot" style="background:var(--muted)"></span>All Items<span class="nc" id="c-all">—</span></div>
+    <div class="ni" data-sev="CRITICAL" onclick="navSev(this)"><span class="ndot" style="background:var(--red)"></span>Critical<span class="nc" id="c-crit">—</span></div>
+    <div class="ni" data-sev="HIGH" onclick="navSev(this)"><span class="ndot" style="background:var(--amber)"></span>High<span class="nc" id="c-high">—</span></div>
+    <div class="ni" data-sev="MEDIUM" onclick="navSev(this)"><span class="ndot" style="background:var(--blue)"></span>Medium<span class="nc" id="c-med">—</span></div>
+  </div>
+  <div class="slabel" style="margin-top:2px">Category</div>
+  <div id="catnav">
+    <div class="ni" data-cat="kev" onclick="navCat(this)"><span class="ndot" style="background:var(--red)"></span>CISA KEV</div>
+    <div class="ni" data-cat="cve" onclick="navCat(this)"><span class="ndot" style="background:var(--amber)"></span>CVE / NVD</div>
+    <div class="ni" data-cat="advisory" onclick="navCat(this)"><span class="ndot" style="background:var(--blue)"></span>Gov Advisories</div>
+    <div class="ni" data-cat="vendor" onclick="navCat(this)"><span class="ndot" style="background:var(--teal)"></span>Vendor</div>
+    <div class="ni" data-cat="ics" onclick="navCat(this)"><span class="ndot" style="background:var(--amber)"></span>ICS / OT</div>
+    <div class="ni" data-cat="threat" onclick="navCat(this)"><span class="ndot" style="background:var(--purple)"></span>Threat Intel</div>
+    <div class="ni" data-cat="malware" onclick="navCat(this)"><span class="ndot" style="background:var(--pink)"></span>Malware / C2</div>
+    <div class="ni" data-cat="supply" onclick="navCat(this)"><span class="ndot" style="background:var(--pink)"></span>Supply Chain</div>
+  </div>
+  <div class="slabel" style="margin-top:2px">Quick</div>
+  <div class="ni" data-sp="new" onclick="navSp(this)"><span class="ndot" style="background:var(--green)"></span>Unread Only<span class="nc fresh" id="c-new">—</span></div>
+</nav>
+
+<!-- FEED PANEL -->
+<main class="feed-panel">
+  <div class="fhead">
+    <div class="swrap">
+      <span class="sico">⌕</span>
+      <input class="srch" id="srch" placeholder="Search CVE, vendor, product, actor..." oninput="onSearch()">
+    </div>
+  </div>
+  <div class="ffilters">
+    <button class="fbtn on" onclick="fltSev(this,'all')">ALL</button>
+    <button class="fbtn cr" onclick="fltSev(this,'CRITICAL')">CRITICAL</button>
+    <button class="fbtn hi" onclick="fltSev(this,'HIGH')">HIGH</button>
+    <button class="fbtn" onclick="fltSev(this,'MEDIUM')">MEDIUM</button>
+    <div style="flex:1"></div>
+    <button class="fbtn" onclick="doSort('date')">NEWEST</button>
+    <button class="fbtn" onclick="doSort('severity')">SEVERITY</button>
+    <button class="fbtn" onclick="doSort('cvss')">CVSS ↓</button>
+  </div>
+  <div class="offline" id="ofl">⚠ Backend offline — run: <code style="font-family:var(--mono);font-size:8px">python main.py</code></div>
+  <div class="flist" id="flist"></div>
+</main>
+
+<!-- DETAIL PANE -->
+<aside class="detail" id="dpane">
+  <div class="dempty"><div class="dempty-ico">⊞</div><span style="font-size:10px;color:var(--muted)">Select an item to inspect</span></div>
+</aside>
+
+<!-- STATUSBAR -->
+<footer class="statusbar">
+  <span id="sbst" class="tok">● CONNECTED</span>
+  <div class="vsep2"></div>
+  <div class="tick-w"><div class="tick-i" id="ticker"><span style="color:var(--muted)">Connecting to ThreatPulse API...</span></div></div>
+  <div class="vsep2"></div>
+  <span id="sbcnt">0 items</span>
+</footer>
+
+</div>
+
+<script>
+const API='http://localhost:8000/api/v1';
+const SC={CRITICAL:'#f0595a',HIGH:'#e8a530',MEDIUM:'#4d9de0',LOW:'#4e5d72',INFO:'#9b8ef5'};
+const SO={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3,INFO:4};
+let S={items:[],sel:null,sev:'all',cat:null,sp:null,q:'',sort:'date',offset:0,lim:100,auto:true};
+let srchT=null,autoT=null;
+
+async function api(path,opts={}){
+  try{
+    const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});
+    if(!r.ok)throw new Error(r.status);
+    setConn(true);return await r.json();
+  }catch(e){setConn(false);return null;}
+}
+
+function setConn(ok){
+  document.getElementById('ofl').classList.toggle('show',!ok);
+  const el=document.getElementById('sbst');
+  el.textContent=ok?'● CONNECTED':'● OFFLINE';
+  el.className=ok?'tok':'terr';
+}
+
+async function load(app=false){
+  if(!app)showSkel();
+  const p=new URLSearchParams({limit:S.lim,offset:S.offset});
+  if(S.sev&&S.sev!=='all')p.set('severity',S.sev);
+  if(S.cat)p.set('category',S.cat);
+  if(S.sp==='new')p.set('is_new','true');
+  if(S.q)p.set('search',S.q);
+  const d=await api('/items?'+p);
+  if(!d){render(app?S.items:[]);return;}
+  S.items=app?[...S.items,...(d.items||[])]:d.items||[];
+  render();
+  document.getElementById('sbcnt').textContent=S.items.length+' items';
+  document.getElementById('lsync').textContent='SYNCED '+new Date().toLocaleTimeString();
+  updateTicker();
+}
+
+async function loadStats(){
+  const d=await api('/stats');
+  if(!d)return;
+  const sv=d.by_severity||{};
+  document.getElementById('chips').innerHTML=
+    `<span class="chip cr">${sv.CRITICAL||0} CRIT</span>`+
+    `<span class="chip hi">${sv.HIGH||0} HIGH</span>`+
+    `<span class="chip me">${sv.MEDIUM||0} MED</span>`+
+    `<span class="chip nw">${d.new_count||0} NEW</span>`+
+    `<span class="chip to">${d.total||0} TOTAL</span>`;
+  sc('c-all',d.total||0);sc('c-crit',sv.CRITICAL||0);
+  sc('c-high',sv.HIGH||0);sc('c-med',sv.MEDIUM||0);sc('c-new',d.new_count||0);
+}
+
+function sc(id,n){const e=document.getElementById(id);if(e)e.textContent=n;}
+
+function showSkel(){
+  document.getElementById('flist').innerHTML=Array(8).fill(0).map(()=>`
+    <div class="skelitem">
+      <div class="skel" style="height:9px;width:${40+Math.random()*45}%"></div>
+      <div class="skel" style="height:7px;width:${55+Math.random()*30}%"></div>
+    </div>`).join('');
+}
+
+function sorted(){
+  const a=[...S.items];
+  if(S.sort==='severity')return a.sort((x,y)=>(SO[x.severity]||5)-(SO[y.severity]||5));
+  if(S.sort==='cvss')return a.sort((x,y)=>(y.cvss||0)-(x.cvss||0));
+  return a.sort((x,y)=>(y.published_at||'').localeCompare(x.published_at||''));
+}
+
+function render(items){
+  const list=document.getElementById('flist');
+  const src=items||sorted();
+  if(!src.length){
+    list.innerHTML='<div class="empty"><div class="empty-ico">⊘</div><span style="font-size:10px">No items match filters</span></div>';
+    return;
+  }
+  list.innerHTML=src.map(i=>{
+    const tags=(Array.isArray(i.tags)?i.tags:[]).slice(0,2);
+    const cv=i.cvss>=9?'var(--red)':i.cvss>=7?'var(--amber)':'var(--blue)';
+    return `<div class="fitem${i.id===S.sel?' sel':''}${i.is_read?' rd':''}" onclick="pick('${i.id}')">
+      <div class="irow1">
+        <span class="sev ${i.severity}">${i.severity}</span>
+        ${i.is_new?'<span class="inew">NEW</span>':''}
+        <span class="ititle">${e(i.title)}</span>
+      </div>
+      <div class="irow2">
+        <span style="font-size:8px;color:${SC[i.severity]||'#4e5d72'}">● ${e(i.feed_label||i.feed_id)}</span>
+        <span>${e(i.vendor||'')}</span>
+        <span>${i.published_at||''}</span>
+        ${i.cvss?`<span style="font-size:8px;font-weight:700;color:${cv}">CVSS ${i.cvss}</span>`:''}
+        ${tags.map(t=>`<span class="itag">${e(t)}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('')+(S.items.length>=S.lim?'<div class="lmore"><button onclick="more()">LOAD MORE</button></div>':'');
+}
+
+async function pick(id){
+  S.sel=id; render();
+  const item=S.items.find(i=>i.id===id);
+  if(!item)return;
+  renderDetail(item);
+  if(item.is_new||!item.is_read){
+    await api('/items/'+id+'/read',{method:'POST'});
+    item.is_read=true;item.is_new=false;
+  }
+}
+
+function renderDetail(i){
+  const tags=Array.isArray(i.tags)?i.tags:[];
+  const cves=Array.isArray(i.cve_ids)?i.cve_ids:[];
+  const raw=i.raw||{};
+  const aff=Array.isArray(raw.affected)?raw.affected:[];
+  const refs=Array.isArray(raw.refs)?raw.refs:(raw.url?[raw.url]:[]);
+  const sc2=SC[i.severity]||'#4e5d72';
+  const cw=i.cvss?+(i.cvss/10*100).toFixed(0):0;
+  const cc=i.cvss>=9?'var(--red)':i.cvss>=7?'var(--amber)':'var(--blue)';
+  document.getElementById('dpane').innerHTML=`
+  <div class="dsec">
+    <div class="dbadges">
+      <span class="sev ${i.severity}" style="font-size:8px">${i.severity}</span>
+      ${i.is_new?'<span class="inew">NEW</span>':''}
+      ${tags.map(t=>`<span class="itag">${e(t)}</span>`).join('')}
+    </div>
+    <div class="dtitle">${e(i.title)}</div>
+    <div class="drow"><span class="dkey">Source</span><span class="dval" style="color:${sc2}">${e(i.feed_label||i.feed_id)}</span></div>
+    <div class="drow"><span class="dkey">Vendor</span><span class="dval">${e(i.vendor||'—')}</span></div>
+    <div class="drow"><span class="dkey">Product</span><span class="dval">${e(i.product||'—')}</span></div>
+    <div class="drow"><span class="dkey">Published</span><span class="dval">${i.published_at||'—'}</span></div>
+    ${cves.length?`<div class="drow"><span class="dkey">CVE(s)</span><span class="dval" style="color:var(--amber)">${cves.slice(0,4).join(', ')}</span></div>`:''}
+    ${i.cvss?`<div class="cbar-w"><span class="dkey" style="font-size:9px">CVSS</span><div class="cbar-t"><div class="cbar-f" style="width:${cw}%;background:${cc}"></div></div><span style="font-size:10px;font-weight:700;color:${cc}">${i.cvss}</span></div>`:''}
+  </div>
+  ${i.description?`<div class="dsec"><div class="dlabel">Summary</div><div class="dbody">${e(i.description)}</div></div>`:''}
+  ${aff.length?`<div class="dsec"><div class="dlabel">Affected Assets</div><ul class="dlist">${aff.slice(0,8).map(a=>`<li>${e(a)}</li>`).join('')}</ul></div>`:''}
+  ${refs.length?`<div class="dsec"><div class="dlabel">References</div>${refs.slice(0,4).map(r=>`<a class="alink" href="${e(r)}" target="_blank">${e(r)}</a>`).join('')}</div>`:''}
+  <div class="dsec">
+    <div class="dlabel">Quick Actions</div>
+    <button class="qbtn" onclick="qa('draft','${esc2(i.title)}','${esc2(i.vendor||'')}','${esc2(i.severity)}')">↗ Draft Client Advisory</button>
+    <button class="qbtn" onclick="qa('detect','${esc2(i.title)}','${esc2(tags.slice(0,3).join(','))}','')">↗ Generate Detection Rules</button>
+    <button class="qbtn" onclick="qa('ioc','${esc2(i.title)}','${esc2(cves.join(','))}','')">↗ Get IOCs & Hunting Queries</button>
+    <button class="qbtn" onclick="qa('impact','${esc2(i.title)}','${esc2(i.vendor||'')}','${esc2(i.product||'')}')">↗ Analyze Client Impact</button>
+  </div>`;
+}
+
+function qa(t,title,v,x){
+  const m={
+    draft:`Draft a professional client advisory for: "${title}" by ${v}. Severity: ${x}. Include what it is, who is affected, recommended immediate actions, and timeline. Keep it clear enough for a non-technical business audience.`,
+    detect:`What SIEM and EDR detection rules should I create for: "${title}"? Provide Splunk SPL, Microsoft Sentinel KQL, and a Sigma rule. Tags: ${v}`,
+    ioc:`What are the known IOCs, YARA rules, and threat hunting queries for: "${title}"? CVEs involved: ${v}. Include file hashes, IPs, domains, registry keys, and behavioral indicators if known.`,
+    impact:`Help me assess client impact for: "${title}" affecting ${v} ${x}. What questions should I ask clients to determine exposure? What asset types are at risk?`
+  };
+  if(typeof sendPrompt==='function')sendPrompt(m[t]);
+  else{navigator.clipboard?.writeText(m[t]);alert('Prompt copied to clipboard');}
+}
+
+function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc2(s){return String(s||'').replace(/'/g,"\\'").replace(/"/g,'').slice(0,120);}
+
+function navSev(el){
+  document.querySelectorAll('#sevnav .ni').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  S.sev=el.dataset.sev;S.cat=null;S.sp=null;
+  document.querySelectorAll('#catnav .ni').forEach(x=>x.classList.remove('active'));
+  S.offset=0;load();
+}
+function navCat(el){
+  document.querySelectorAll('#catnav .ni').forEach(x=>x.classList.remove('active'));
+  el.classList.toggle('active');
+  S.cat=el.classList.contains('active')?el.dataset.cat:null;
+  S.sev='all';S.sp=null;
+  document.querySelectorAll('#sevnav .ni').forEach(x=>x.classList.remove('active'));
+  document.querySelector('#sevnav .ni[data-sev="all"]').classList.add('active');
+  S.offset=0;load();
+}
+function navSp(el){
+  el.classList.toggle('active');
+  S.sp=el.classList.contains('active')?el.dataset.sp:null;
+  S.offset=0;load();
+}
+function fltSev(btn,v){
+  document.querySelectorAll('.ffilters .fbtn').forEach(b=>{if(['ALL','CRITICAL','HIGH','MEDIUM'].includes(b.textContent))b.classList.remove('on');});
+  btn.classList.toggle('on');
+  S.sev=btn.classList.contains('on')?v:'all';
+  S.offset=0;load();
+}
+function doSort(s){S.sort=s;render();}
+function onSearch(){clearTimeout(srchT);srchT=setTimeout(()=>{S.q=document.getElementById('srch').value.trim();S.offset=0;load();},380);}
+function more(){S.offset+=S.lim;load(true);}
+
+async function doRefresh(){
+  const btn=document.getElementById('rfbtn');
+  btn.textContent='↺ ...';btn.disabled=true;
+  await api('/refresh',{method:'POST'});
+  setTimeout(async()=>{
+    btn.textContent='↺ REFRESH';btn.disabled=false;
+    await Promise.all([loadStats(),load()]);
+  },3500);
+}
+
+function toggleAuto(){
+  S.auto=!S.auto;
+  const btn=document.getElementById('autobtn');
+  btn.textContent=`AUTO ${S.auto?'ON':'OFF'}`;
+  btn.classList.toggle('on',S.auto);
+  if(S.auto)sched();else clearTimeout(autoT);
+}
+function sched(){
+  clearTimeout(autoT);
+  if(!S.auto)return;
+  autoT=setTimeout(async()=>{await Promise.all([loadStats(),load()]);sched();},60000);
+}
+
+function updateTicker(){
+  const hi=S.items.filter(i=>['CRITICAL','HIGH'].includes(i.severity));
+  if(!hi.length)return;
+  const d=[...hi,...hi];
+  document.getElementById('ticker').innerHTML=d.map(i=>{
+    const cls=i.severity==='CRITICAL'?'tcr':'thi';
+    return `<span class="ti ${cls}">[${i.severity}] ${e(i.title.split('—')[0].slice(0,60))} · ${e(i.vendor||'')}</span>`;
+  }).join('<span style="color:var(--dim);margin:0 6px">|</span>');
+}
+
+(async()=>{showSkel();await Promise.all([loadStats(),load()]);sched();})();
+</script>
+</body>
+</html>
