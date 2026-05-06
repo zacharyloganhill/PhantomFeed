@@ -550,6 +550,29 @@ async def export_detection_rules_zip(client_id: str):
 # POST /clients/{id}/export/push-rules-github
 # ---------------------------------------------------------------------------
 
+@router.get("/clients/{client_id}/report.html")
+async def client_report_html_preview(
+    client_id: str,
+    days: int = Query(30, ge=1, le=365),
+):
+    """Browser-renderable HTML report with a Download PDF button at the top."""
+    from db import database as db
+    from reports.pdf_generator import generate_client_report_html, _get_report_extras
+    from fastapi.responses import HTMLResponse
+    client = await db.get_client(client_id)
+    if not client:
+        raise HTTPException(404, "Client not found")
+    items = await db.get_items(client_id=client_id, limit=500, sort="risk")
+    extras = await _get_report_extras(client_id, days)
+    html = generate_client_report_html(client, items, days, extras=extras)
+    btn = (f'<div style="padding:12px;background:#1a1a2e;text-align:center">'
+           f'<a href="/api/v1/admin/clients/{client_id}/report.pdf?days={days}" '
+           f'style="color:#fff;background:#6b46c1;padding:8px 20px;text-decoration:none;'
+           f'font-family:sans-serif;font-size:13px">⬇ Download PDF</a></div>')
+    html = html.replace("<body>", "<body>" + btn)
+    return HTMLResponse(content=html)
+
+
 @router.post("/clients/{client_id}/export/push-rules-github")
 async def push_rules_github(client_id: str, body: dict):
     """Push detection rules to a GitHub repo via the Contents API."""

@@ -111,12 +111,16 @@ async def client_report_html(
     days: int = Query(7, ge=1, le=365),
     _: dict = Depends(require_admin),
 ):
-    from reports.pdf_generator import generate_client_report_html
+    from reports.pdf_generator import generate_client_report_html, _get_report_extras
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    items = await db.get_items(limit=500, sort="risk")
-    html = generate_client_report_html(client, items, days)
+    items = await db.get_items(client_id=client_id, limit=500, sort="risk")
+    extras = await _get_report_extras(client_id, days)
+    html = generate_client_report_html(client, items, days, extras=extras)
+    # Add download PDF button at top
+    btn = f'<div style="padding:12px;background:#1a1a2e;text-align:center"><a href="/api/v1/admin/clients/{client_id}/report.pdf?days={days}" style="color:#fff;background:#6b46c1;padding:8px 20px;text-decoration:none;font-family:sans-serif;font-size:13px">⬇ Download PDF</a></div>'
+    html = html.replace("<body>", "<body>" + btn)
     return Response(content=html, media_type="text/html")
 
 
@@ -126,12 +130,13 @@ async def client_report_pdf(
     days: int = Query(7, ge=1, le=365),
     _: dict = Depends(require_admin),
 ):
-    from reports.pdf_generator import generate_client_report
+    from reports.pdf_generator import generate_client_report, _get_report_extras
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    items = await db.get_items(limit=500, sort="risk")
-    content, media_type = generate_client_report(client, items, days)
+    items = await db.get_items(client_id=client_id, limit=500, sort="risk")
+    extras = await _get_report_extras(client_id, days)
+    content, media_type = generate_client_report(client, items, days, extras=extras)
     filename = f"phantomfeed-report-{client.get('name','client').replace(' ','-')}.pdf"
     headers = {}
     if media_type == "application/pdf":

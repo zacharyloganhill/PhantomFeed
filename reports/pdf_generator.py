@@ -38,7 +38,48 @@ def _compliance_pill_style(tag: str) -> str:
     return f"background:{color};color:#fff;padding:2px 7px;border-radius:10px;font-size:11px;margin:2px;display:inline-block"
 
 
-def generate_client_report_html(client: dict, items: list[dict], days: int = 7) -> str:
+def _ascii_bar(label: str, count: int, max_count: int, width: int = 20) -> str:
+    filled = int((count / max_count) * width) if max_count else 0
+    bar = "█" * filled + "░" * (width - filled)
+    return f"{label:<12} {bar} {count}"
+
+
+def _severity_chart_html(recent: list[dict]) -> str:
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for i in recent:
+        sev = i.get("severity", "INFO")
+        if sev in counts:
+            counts[sev] += 1
+    max_c = max(counts.values()) or 1
+    colors = {"CRITICAL": "#e53e3e", "HIGH": "#dd6b20", "MEDIUM": "#d69e2e", "LOW": "#38a169"}
+    rows = ""
+    for sev, cnt in counts.items():
+        pct = int((cnt / max_c) * 100) if max_c else 0
+        rows += f"""<tr>
+          <td style="padding:4px 8px;width:80px;font-weight:bold;color:{colors[sev]}">{sev}</td>
+          <td style="padding:4px 2px"><div style="background:{colors[sev]};height:14px;width:{pct}%;min-width:2px"></div></td>
+          <td style="padding:4px 8px;color:#4a5568;font-weight:bold">{cnt}</td>
+        </tr>"""
+    return f"""<table style="border-collapse:collapse;width:100%;max-width:500px">{rows}</table>"""
+
+
+async def _get_report_extras(client_id: str, days: int) -> dict:
+    """Fetch remediation items, exposures, and recent IOCs for the report."""
+    extras = {"remediations": [], "exposures": [], "iocs": []}
+    try:
+        from db import database as db
+        from datetime import timedelta
+        extras["remediations"] = await db.get_remediations(client_id)
+        extras["iocs"] = await db.list_ioc_cache(limit=200)
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        extras["iocs"] = [r for r in extras["iocs"] if (r.get("enriched_at") or "") >= cutoff]
+    except Exception:
+        pass
+    return extras
+
+
+def generate_client_report_html(client: dict, items: list[dict], days: int = 7,
+                                  extras: dict = None) -> str:
     now = datetime.utcnow()
     cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d")
     report_date = now.strftime("%B %d, %Y %H:%M UTC")
@@ -88,6 +129,79 @@ def generate_client_report_html(client: dict, items: list[dict], days: int = 7) 
     checklist = ""
     for cat, titles in categories_seen.items():
         checklist += f"<li><b>{cat.upper()}</b>: Review and patch — {', '.join(titles[:2])}</li>"
+
+    # Severity bar chart
+    sev_chart = _severity_chart_html(recent)
+
+    # Extras: remediations, IOC appendix
+    rems = (extras or {}).get("remediations", [])
+    iocs = (extras or {}).get("iocs", [])
+
+    # Remediation tracker table
+    if rems:
+        from datetime import timedelta as _td
+        def _dr(due):
+            if not due: return ""
+            try:
+                d = datetime.strptime(due[:10], "%Y-%m-%d")
+                dr = (d - datetime.utcnow()).days
+                return f"{'<span style=\"color:#e53e3e\">' if dr<0 else ''}{dr}d{'</span>' if dr<0 else ''}"
+            except: return ""
+        rem_rows = ""
+        for r in rems[:50]:
+            status = r.get("status", "open")
+            sc = "#e53e3e" if r.get("is_overdue") else "#38a169" if status == "patched" else "#718096"
+            rem_rows += f"""<tr>
+              <td style="font-size:11px">{r.get('item_id','')[:16]}</td>
+              <td><span style="color:{sc};font-weight:bold">{status.upper()}</span></td>
+              <td style="font-size:11px">{r.get('due_date','')[:10]}</td>
+              <td>{_dr(r.get('due_date',''))}</td>
+              <td style="font-size:11px">{r.get('assigned_to','') or '—'}</td>
+            </tr>"""
+        rem_section = f"""<h2>Remediation Tracker</h2>
+        <table>
+          <thead><tr><th>Item ID</th><th>Status</th><th>Due Date</th><th>Days Remaining</th><th>Assigned To</th></tr></thead>
+          <tbody>{rem_rows}</tbody>
+        </table>"""
+    else:
+        rem_section = ""
+
+    # Compliance gap table
+    comp_counts: dict = {}
+    for item in recent:
+        for tag in (item.get("compliance_tags") or []):
+            comp_counts[tag] = comp_counts.get(tag, 0) + 1
+    if comp_counts:
+        comp_rows = "".join(
+            f"<tr><td>{tag}</td><td style='text-align:center'>{cnt}</td>"
+            f"<td>{'<span style=\"color:#e53e3e\">Gap — review required</span>' if cnt>2 else '<span style=\"color:#38a169\">Monitored</span>'}</td></tr>"
+            for tag, cnt in sorted(comp_counts.items(), key=lambda x: -x[1])[:20]
+        )
+        comp_section = f"""<h2>Compliance Gap Analysis</h2>
+        <table>
+          <thead><tr><th>Control</th><th>Items Affected</th><th>Status</th></tr></thead>
+          <tbody>{comp_rows}</tbody>
+        </table>"""
+    else:
+        comp_section = ""
+
+    # IOC appendix
+    if iocs:
+        ioc_rows = "".join(
+            f"<tr><td style='font-family:monospace;font-size:11px'>{r.get('ioc_value','')[:60]}</td>"
+            f"<td>{r.get('ioc_type','')}</td>"
+            f"<td style='color:{'#e53e3e' if (r.get('abuseipdb_score') or 0)>50 else '#38a169'}'>"
+            f"{'Malicious' if (r.get('abuseipdb_score') or 0)>50 or (r.get('greynoise_classification')=='malicious') else 'Unknown'}</td>"
+            f"<td style='font-size:10px'>{(r.get('enriched_at') or '')[:10]}</td></tr>"
+            for r in iocs[:30]
+        )
+        ioc_section = f"""<h2>IOC Appendix ({len(iocs)} indicators)</h2>
+        <table>
+          <thead><tr><th>Indicator</th><th>Type</th><th>Verdict</th><th>Date</th></tr></thead>
+          <tbody>{ioc_rows}</tbody>
+        </table>"""
+    else:
+        ioc_section = ""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -163,6 +277,9 @@ def generate_client_report_html(client: dict, items: list[dict], days: int = 7) 
   </tbody>
 </table>
 
+<h2>Severity Distribution</h2>
+{sev_chart}
+
 <h2>Remediation Checklist</h2>
 <div class="checklist">
   <ul>
@@ -173,6 +290,10 @@ def generate_client_report_html(client: dict, items: list[dict], days: int = 7) 
     <li>Validate supply chain dependencies against advisory items.</li>
   </ul>
 </div>
+
+{rem_section}
+{comp_section}
+{ioc_section}
 
 <div class="footer">
   Generated by PhantomFeed Intelligence Platform &nbsp;·&nbsp;
@@ -185,12 +306,13 @@ def generate_client_report_html(client: dict, items: list[dict], days: int = 7) 
     return html
 
 
-def generate_client_report(client: dict, items: list[dict], days: int = 7) -> tuple[bytes, str]:
+def generate_client_report(client: dict, items: list[dict], days: int = 7,
+                            extras: dict = None) -> tuple[bytes, str]:
     """
     Returns (content_bytes, media_type).
     Tries WeasyPrint → ReportLab → HTML fallback.
     """
-    html = generate_client_report_html(client, items, days)
+    html = generate_client_report_html(client, items, days, extras=extras)
 
     # Try WeasyPrint first
     try:
