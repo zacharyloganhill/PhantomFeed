@@ -185,14 +185,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
   </div>
   <div class="slabel" style="margin-top:2px">Category</div>
   <div id="catnav">
-    <div class="ni" data-cat="kev" onclick="navCat(this)"><span class="ndot" style="background:var(--red)"></span>CISA KEV</div>
-    <div class="ni" data-cat="cve" onclick="navCat(this)"><span class="ndot" style="background:var(--amber)"></span>CVE / NVD</div>
+    <div class="ni" data-cat="kev" onclick="navCat(this)"><span class="ndot" style="background:var(--red)"></span>KEV<span style="font-size:7px;color:var(--muted);margin-left:3px">CISA · VulnCheck</span></div>
+    <div class="ni" data-cat="cve" onclick="navCat(this)"><span class="ndot" style="background:var(--amber)"></span>CVE<span style="font-size:7px;color:var(--muted);margin-left:3px">NVD · CIRCL · EPSS</span></div>
     <div class="ni" data-cat="advisory" onclick="navCat(this)"><span class="ndot" style="background:var(--blue)"></span>Gov Advisories</div>
     <div class="ni" data-cat="vendor" onclick="navCat(this)"><span class="ndot" style="background:var(--teal)"></span>Vendor</div>
     <div class="ni" data-cat="ics" onclick="navCat(this)"><span class="ndot" style="background:var(--amber)"></span>ICS / OT</div>
-    <div class="ni" data-cat="threat" onclick="navCat(this)"><span class="ndot" style="background:var(--purple)"></span>Threat Intel</div>
-    <div class="ni" data-cat="malware" onclick="navCat(this)"><span class="ndot" style="background:var(--pink)"></span>Malware / C2</div>
-    <div class="ni" data-cat="supply" onclick="navCat(this)"><span class="ndot" style="background:var(--pink)"></span>Supply Chain</div>
+    <div class="ni" data-cat="threat" onclick="navCat(this)"><span class="ndot" style="background:var(--purple)"></span>Threat Intel<span style="font-size:7px;color:var(--muted);margin-left:3px">OTX · ThreatFox</span></div>
+    <div class="ni" data-cat="malware" onclick="navCat(this)"><span class="ndot" style="background:var(--pink)"></span>Malware / C2<span style="font-size:7px;color:var(--muted);margin-left:3px">URLhaus · Feodo · MBazaar</span></div>
+    <div class="ni" data-cat="supply" onclick="navCat(this)"><span class="ndot" style="background:var(--green)"></span>Supply Chain<span style="font-size:7px;color:var(--muted);margin-left:3px">npm · PyPI · Go · Rust · Maven · NuGet</span></div>
   </div>
   <div class="slabel" style="margin-top:2px">Quick</div>
   <div class="ni" data-sp="new" onclick="navSp(this)"><span class="ndot" style="background:var(--green)"></span>Unread Only<span class="nc fresh" id="c-new">—</span></div>

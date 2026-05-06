@@ -87,10 +87,25 @@ VENDOR_RSS_FEEDS = [
 ]
 
 # ── Threat Intel Feeds ────────────────────────────────────────────────────────
-ABUSE_CH_URLHAUS = "https://urlhaus.abuse.ch/downloads/json_recent/"
-ABUSE_CH_FEODO = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
-OTX_PULSES_URL = "https://otx.alienvault.com/api/v1/pulses/subscribed"
-URLHAUS_API_KEY = os.getenv("URLHAUS_API_KEY", "")  # free key at https://auth.abuse.ch/
+ABUSE_CH_URLHAUS    = "https://urlhaus.abuse.ch/downloads/json_recent/"
+ABUSE_CH_FEODO      = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
+ABUSE_CH_THREATFOX  = "https://threatfox-api.abuse.ch/api/v1/"
+ABUSE_CH_MALWAREBAZAAR = "https://mb-api.abuse.ch/api/v1/"
+OTX_PULSES_URL      = "https://otx.alienvault.com/api/v1/pulses/subscribed"
+
+# abuse.ch API keys (all free at https://auth.abuse.ch/)
+URLHAUS_API_KEY     = os.getenv("URLHAUS_API_KEY", "")
+THREATFOX_API_KEY   = os.getenv("THREATFOX_API_KEY", "")
+MALWARE_BAZAAR_KEY  = os.getenv("MALWARE_BAZAAR_KEY", "")
+
+# ── Enrichment / Scoring APIs ─────────────────────────────────────────────────
+# FIRST EPSS — public, no auth
+FIRST_EPSS_API      = "https://api.first.org/data/v1/epss"
+# CIRCL CVE enrichment — public, no auth
+CIRCL_CVE_URL       = "https://cve.circl.lu/api/last/30"
+# VulnCheck KEV — requires free community token at https://vulncheck.com/token
+VULNCHECK_TOKEN     = os.getenv("VULNCHECK_TOKEN", "")
+VULNCHECK_KEV_URL   = "https://api.vulncheck.com/v3/index/vulncheck-kev"
 
 # ── Severity Normalization ─────────────────────────────────────────────────────
 # Map various source severities → our standard levels
