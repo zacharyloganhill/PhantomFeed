@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhantomFeed — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a0d;--bg2:#0c0f14;--bg3:#111620;--bg4:#161c28;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#c9d4e3;--muted:#4e5d72;
+  --teal:#00d4aa;--teal-d:rgba(0,212,170,0.08);--teal-m:rgba(0,212,170,0.15);
+  --red:#f0595a;--red-d:rgba(240,89,90,0.1);
+  --amber:#e8a530;--blue:#4d9de0;--green:#3dd68c;--purple:#9b8ef5;
+  --mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1e2836}
+.shell{display:grid;grid-template-rows:44px 1fr 28px;height:100vh}
+.topbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.logo-text{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--teal)}
+.logo-pulse{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.page-title{font-size:9px;letter-spacing:2px;color:var(--muted);border-left:1px solid var(--border);padding-left:14px}
+.topnav{display:flex;gap:4px;margin-left:auto}
+.tnav{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:all .15s}
+.tnav:hover,.tnav.active{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.statusbar{background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:16px;font-size:8px;color:var(--muted);letter-spacing:.5px}
+.sb-dot{width:4px;height:4px;border-radius:50%;background:var(--muted)}
+.layout{display:grid;grid-template-columns:220px 1fr;height:100%;overflow:hidden}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto}
+.main{overflow-y:auto;padding:20px}
+.slabel{font-size:8px;letter-spacing:2px;color:var(--muted);padding:12px 12px 4px;text-transform:uppercase}
+.cl-item{padding:8px 12px;cursor:pointer;font-size:10px;color:var(--muted);border-left:2px solid transparent;transition:all .12s}
+.cl-item:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.cl-item.active{color:var(--text);background:var(--teal-d);border-left-color:var(--teal)}
+.cl-name{font-weight:600;color:var(--text)}
+.cl-email{font-size:8px;color:var(--muted)}
+.section-header{font-size:10px;letter-spacing:2px;color:var(--teal);text-transform:uppercase;margin-bottom:16px;margin-top:20px;display:flex;align-items:center;gap:8px}
+.section-header::after{content:'';flex:1;height:1px;background:var(--border)}
+.section-header:first-child{margin-top:0}
+.btn{font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s}
+.btn:hover,.btn.primary{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.btn.danger{border-color:var(--red);color:var(--red);background:var(--red-d)}
+.btn.sm{padding:3px 8px;font-size:8px}
+table{width:100%;border-collapse:collapse;font-size:9px}
+th{padding:7px 10px;background:var(--bg4);color:var(--muted);font-weight:500;letter-spacing:.5px;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(255,255,255,.02)}
+.badge{font-size:7px;letter-spacing:.5px;padding:2px 6px;border:1px solid}
+.badge.ok{border-color:rgba(61,214,140,.4);color:var(--green)}
+.badge.warn{border-color:rgba(232,165,48,.4);color:var(--amber)}
+.badge.err{border-color:rgba(240,89,90,.4);color:var(--red)}
+.badge.muted{border-color:var(--border);color:var(--muted)}
+.dropzone{border:1px dashed var(--border2);padding:16px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px}
+.dropzone:hover,.dropzone.drag-over{border-color:var(--teal);background:var(--teal-d)}
+.dz-text{font-size:9px;color:var(--muted)}
+.dz-text span{color:var(--teal)}
+input[type=file]{display:none}
+.finput{font-family:var(--mono);font-size:9px;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:5px 8px;outline:none;width:100%}
+.finput:focus{border-color:var(--teal)}
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;padding:7px 14px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;text-transform:uppercase;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--teal);border-bottom-color:var(--teal)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:var(--bg3);border:1px solid var(--border);padding:12px}
+.stat-val{font-size:22px;font-weight:700;color:var(--teal)}
+.stat-label{font-size:8px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+.empty{text-align:center;padding:24px;color:var(--muted);font-size:9px}
+.toast-container{position:fixed;bottom:40px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:9px 14px;background:var(--bg3);border:1px solid var(--border);font-size:9px;color:var(--text);display:flex;align-items:center;gap:10px;animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.toast.success{border-color:rgba(61,214,140,.4)}
+.toast.error{border-color:rgba(240,89,90,.4)}
+.spinner{display:inline-block;width:10px;height:10px;border:1px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="topbar">
+  <div class="logo-pulse"></div>
+  <div class="logo-text">PHANTOMFEED</div>
+  <div class="page-title">ADMIN</div>
+  <nav class="topnav">
+    <a class="tnav" href="dashboard.html">DASHBOARD</a>
+    <a class="tnav" href="analytics.html">ANALYTICS</a>
+    <a class="tnav" href="upload.html">⬆ UPLOAD</a>
+    <a class="tnav active" href="admin.html">ADMIN</a>
+  </nav>
+</div>
+
+<div class="layout">
+  <!-- Client sidebar -->
+  <div class="sidebar">
+    <div class="slabel">Clients</div>
+    <div id="client-list"></div>
+    <div style="padding:10px 12px;border-top:1px solid var(--border);margin-top:8px">
+      <button class="btn sm" style="width:100%" onclick="showNewClientForm()">+ New Client</button>
+    </div>
+  </div>
+
+  <!-- Main panel -->
+  <div class="main" id="main-panel">
+    <div class="empty">← Select a client to manage assets, uploads, and exports</div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <div class="sb-dot" id="sb-dot"></div>
+  <span id="sb-status">LOADING...</span>
+  <span style="margin-left:auto" id="sb-time"></span>
+</div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const API = '/api/v1';
+let clients = [];
+let selectedClient = null;
+
+function toast(msg, type='info', dur=3000) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.innerHTML = `<span>${msg}</span><span style="margin-left:auto;cursor:pointer" onclick="this.parentElement.remove()">✕</span>`;
+  document.getElementById('toast-container').appendChild(t);
+  if (dur) setTimeout(()=>t.remove(), dur);
+}
+
+function getToken() { return localStorage.getItem('pf_token')||''; }
+
+async function loadClients() {
+  try {
+    const r = await fetch(API+'/admin/clients', {headers:{'Authorization':'Bearer '+getToken()}});
+    if (!r.ok) { document.getElementById('sb-status').textContent='AUTH REQUIRED'; return; }
+    clients = await r.json();
+    renderClientList();
+    document.getElementById('sb-dot').style.background='var(--green)';
+    document.getElementById('sb-status').textContent='● CONNECTED — '+clients.length+' clients';
+    document.getElementById('sb-time').textContent=new Date().toISOString().slice(0,16).replace('T',' ')+' UTC';
+  } catch(e) {
+    document.getElementById('sb-status').textContent='○ OFFLINE';
+  }
+}
+
+function renderClientList() {
+  const el = document.getElementById('client-list');
+  if (!clients.length) { el.innerHTML='<div class="empty">No clients yet</div>'; return; }
+  el.innerHTML = clients.map(c => `
+    <div class="cl-item${selectedClient&&selectedClient.id===c.id?' active':''}" onclick="selectClient('${c.id}')">
+      <div class="cl-name">${esc(c.name)}</div>
+      <div class="cl-email">${esc(c.contact_email||'')}</div>
+    </div>
+  `).join('');
+}
+
+function selectClient(id) {
+  selectedClient = clients.find(c=>c.id===id);
+  renderClientList();
+  renderClientPanel();
+}
+
+function renderClientPanel() {
+  if (!selectedClient) return;
+  const c = selectedClient;
+  document.getElementById('main-panel').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${esc(c.name)}</div>
+        <div style="font-size:9px;color:var(--muted)">${esc(c.contact_email||'')} &nbsp;·&nbsp; ID: ${c.id.slice(0,8)}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" onclick="window.open('/upload.html','_self')">⬆ Upload Scan</button>
+        <button class="btn sm danger" onclick="deleteClient('${c.id}')">✕ Delete</button>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab active" onclick="cTab('assets')">Assets</button>
+      <button class="tab" onclick="cTab('history')">Import History</button>
+      <button class="tab" onclick="cTab('export')">Export</button>
+      <button class="tab" onclick="cTab('users')">Users</button>
+    </div>
+
+    <div id="cpane-assets" class="tab-pane active"></div>
+    <div id="cpane-history" class="tab-pane"></div>
+    <div id="cpane-export" class="tab-pane"></div>
+    <div id="cpane-users" class="tab-pane"></div>
+  `;
+  loadAssetsTab();
+}
+
+function cTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['assets','history','export','users'][i]===name));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('cpane-'+name).classList.add('active');
+  if (name==='assets') loadAssetsTab();
+  else if (name==='history') loadHistoryTab();
+  else if (name==='export') renderExportTab();
+  else if (name==='users') loadUsersTab();
+}
+
+// ── Assets tab ─────────────────────────────────────────────────────────────────
+async function loadAssetsTab() {
+  const el = document.getElementById('cpane-assets');
+  if (!el) return;
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/assets`, {headers:{'Authorization':'Bearer '+getToken()}});
+    const assets = r.ok ? await r.json() : [];
+
+    el.innerHTML = `
+      <div class="section-header">Asset Inventory</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div class="dropzone" style="flex:1;padding:12px" id="dz-asset"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="assetDrop(event)">
+          <div class="dz-text">Drag CSV/XLSX or <span onclick="document.getElementById('fi-asset').click()">browse</span></div>
+          <input type="file" id="fi-asset" accept=".csv,.xlsx" onchange="uploadAssets(this)">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="btn sm" onclick="downloadAssetTemplate()">⬇ Template</button>
+          <button class="btn sm" onclick="exportAssets()">⬇ Export CSV</button>
+          <button class="btn sm" onclick="runMatching()">▶ Run Matching</button>
+        </div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-val">${assets.length}</div><div class="stat-label">Total Assets</div></div>
+        <div class="stat-card"><div class="stat-val" id="match-count">—</div><div class="stat-label">CPE Matches</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Hostname</th><th>IP</th><th>OS</th><th>Software</th><th>Version</th><th>Type</th><th></th></tr></thead>
+        <tbody>
+          ${assets.length ? assets.map(a=>`
+            <tr>
+              <td>${esc(a.hostname||'')}</td>
+              <td>${esc(a.ip_address||'')}</td>
+              <td>${esc(a.os||'')}</td>
+              <td>${esc(a.software||'')}</td>
+              <td>${esc(a.version||'')}</td>
+              <td>${esc(a.asset_type||'')}</td>
+              <td><button class="btn sm danger" onclick="deleteAsset('${a.id}')">✕</button></td>
+            </tr>
+          `).join('') : '<tr><td colspan="7" class="empty">No assets imported yet</td></tr>'}
+        </tbody>
+      </table>
+    `;
+  } catch(e) { el.innerHTML = '<div class="empty">Error loading assets</div>'; }
+}
+
+function assetDrop(e) {
+  e.preventDefault();
+  document.getElementById('dz-asset').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) doUploadAssets(file);
+}
+
+function uploadAssets(input) {
+  const file = input.files[0];
+  if (file) doUploadAssets(file);
+}
+
+async function doUploadAssets(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  toast('Uploading assets...', 'info', 0);
+  try {
+    const r = await fetch(`${API}/upload/assets?client_id=${selectedClient.id}`, {method:'POST', body:fd});
+    document.querySelector('.toast').remove();
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail);
+    const uploadId = data.upload_id;
+    // Auto-confirm
+    const r2 = await fetch(`${API}/upload/assets/${uploadId}/confirm`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d2 = await r2.json();
+    toast(`Imported ${d2.imported_assets} assets`, 'success');
+    loadAssetsTab();
+  } catch(e) { toast('Error: '+e.message, 'error'); }
+}
+
+async function deleteAsset(assetId) {
+  if (!confirm('Delete this asset?')) return;
+  const r = await fetch(`${API}/admin/clients/${selectedClient.id}/assets/${assetId}`, {method:'DELETE', headers:{'Authorization':'Bearer '+getToken()}});
+  if (r.ok) { toast('Asset deleted','success'); loadAssetsTab(); }
+  else toast('Delete failed','error');
+}
+
+function downloadAssetTemplate() {
+  window.open(`${API}/upload/templates/assets`, '_blank');
+}
+
+function exportAssets() {
+  window.open(`${API}/admin/clients/${selectedClient.id}/assets`, '_blank');
+}
+
+async function runMatching() {
+  toast('Running CPE matching...', 'info', 0);
+  try {
+    const r = await fetch(`${API}/refresh`, {method:'POST'});
+    document.querySelector('.toast')?.remove();
+    toast('Matching triggered — check logs', 'success');
+  } catch(e) { toast('Error: '+e.message, 'error'); }
+}
+
+// ── History tab ────────────────────────────────────────────────────────────────
+async function loadHistoryTab() {
+  const el = document.getElementById('cpane-history');
+  if (!el) return;
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/upload/history?client_id=${selectedClient.id}`);
+    const rows = r.ok ? await r.json() : [];
+    el.innerHTML = `
+      <div class="section-header">Import History</div>
+      <table>
+        <thead><tr><th>Filename</th><th>Format</th><th>Imported</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${rows.length ? rows.map(row=>`
+          <tr>
+            <td>${esc(row.filename||'')}</td>
+            <td>${esc(row.file_type||'')}</td>
+            <td>${row.records_imported||0}/${row.records_total||0}</td>
+            <td><span class="badge ${statusClass(row.status)}">${(row.status||'pending').toUpperCase()}</span></td>
+            <td>${(row.uploaded_at||'').slice(0,16).replace('T',' ')}</td>
+          </tr>
+          ${row.error_message?`<tr><td colspan="5" style="color:var(--red);font-size:8px;padding:4px 10px">${esc(row.error_message)}</td></tr>`:''}
+        `).join('') : '<tr><td colspan="5" class="empty">No upload history</td></tr>'}
+        </tbody>
+      </table>
+    `;
+  } catch(e) { el.innerHTML = '<div class="empty">Error loading history</div>'; }
+}
+
+function statusClass(s) {
+  return {imported:'ok', partial:'warn', failed:'err', enriched:'ok'}[s] || 'muted';
+}
+
+// ── Export tab ─────────────────────────────────────────────────────────────────
+function renderExportTab() {
+  const el = document.getElementById('cpane-export');
+  if (!el) return;
+  const id = selectedClient.id;
+  el.innerHTML = `
+    <div class="section-header">Export Data</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
+        <span style="flex:1;font-size:10px">Asset List</span>
+        <span style="font-size:9px;color:var(--muted)">CSV of all imported assets</span>
+        <button class="btn sm" onclick="window.open('${API}/admin/clients/${id}/assets','_blank')">⬇ JSON</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
+        <span style="flex:1;font-size:10px">Remediation Tracker</span>
+        <span style="font-size:9px;color:var(--muted)">Open items with SLA status</span>
+        <button class="btn sm" onclick="window.open('${API}/clients/${id}/export/remediation.csv','_blank')">⬇ CSV</button>
+        <button class="btn sm primary" onclick="window.open('${API}/clients/${id}/export/remediation.xlsx','_blank')">⬇ XLSX</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
+        <span style="flex:1;font-size:10px">Detection Rules</span>
+        <span style="font-size:9px;color:var(--muted)">SPL + KQL + Sigma ZIP</span>
+        <button class="btn sm primary" onclick="window.open('${API}/clients/${id}/export/detection-rules.zip','_blank')">⬇ ZIP</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
+        <span style="flex:1;font-size:10px">PDF Threat Report</span>
+        <span style="font-size:9px;color:var(--muted)">Full intelligence report</span>
+        <select id="rpt-days-admin" style="font-family:var(--mono);font-size:8px;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:3px 6px;outline:none">
+          <option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option>
+        </select>
+        <button class="btn sm primary" onclick="downloadClientReport('${id}')">⬇ PDF</button>
+      </div>
+    </div>
+  `;
+}
+
+function downloadClientReport(clientId) {
+  const days = document.getElementById('rpt-days-admin').value;
+  window.open(`${API}/admin/clients/${clientId}/report.pdf?days=${days}`, '_blank');
+}
+
+// ── Users tab ──────────────────────────────────────────────────────────────────
+async function loadUsersTab() {
+  const el = document.getElementById('cpane-users');
+  if (!el) return;
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/users`, {headers:{'Authorization':'Bearer '+getToken()}});
+    const users = r.ok ? await r.json() : [];
+    el.innerHTML = `
+      <div class="section-header">Users</div>
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Created</th></tr></thead>
+        <tbody>${users.length ? users.map(u=>`
+          <tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${(u.created_at||'').slice(0,10)}</td></tr>
+        `).join('') : '<tr><td colspan="3" class="empty">No users for this client</td></tr>'}
+        </tbody>
+      </table>
+    `;
+  } catch(e) { el.innerHTML = '<div class="empty">Error loading users</div>'; }
+}
+
+// ── New client form ────────────────────────────────────────────────────────────
+function showNewClientForm() {
+  const name = prompt('Client name:');
+  if (!name) return;
+  const email = prompt('Contact email (optional):') || '';
+  createClient(name, email);
+}
+
+async function createClient(name, email) {
+  try {
+    const r = await fetch(`${API}/admin/clients`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+      body: JSON.stringify({name, contact_email:email, stack_profile:{}}),
+    });
+    if (r.ok) { toast('Client created','success'); await loadClients(); }
+    else { const d = await r.json(); throw new Error(d.detail); }
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+
+async function deleteClient(id) {
+  if (!confirm('Delete this client and all their data? This cannot be undone.')) return;
+  const r = await fetch(`${API}/admin/clients/${id}`, {method:'DELETE', headers:{'Authorization':'Bearer '+getToken()}});
+  if (r.ok) { toast('Client deleted','success'); selectedClient=null; document.getElementById('main-panel').innerHTML='<div class="empty">Client deleted</div>'; await loadClients(); }
+  else toast('Delete failed','error');
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+loadClients();
+</script>
+</body>
+</html>

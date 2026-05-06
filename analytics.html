@@ -58,8 +58,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
   <div class="vsep"></div>
   <a href="/dashboard.html" class="tbtn">← FEED</a>
   <a href="/analytics.html" class="tbtn on">ANALYTICS</a>
+  <a href="/upload.html" class="tbtn">⬆ UPLOAD</a>
   <a href="/admin.html" class="tbtn">ADMIN</a>
   <div class="spacer"></div>
+  <button class="tbtn" onclick="exportCharts()">⬇ CHARTS</button>
+  <button class="tbtn" onclick="exportAnalyticsReport()">⬇ REPORT</button>
   <span style="font-size:9px;color:var(--muted)" id="last-updated">—</span>
 </div>
 
@@ -380,6 +383,28 @@ function setPeriod(days, btn) {
   document.querySelectorAll('.dbtn').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
   loadAll();
+}
+
+function exportCharts() {
+  const canvases = document.querySelectorAll('canvas');
+  if (!canvases.length) { alert('No charts to export'); return; }
+  canvases.forEach((canvas, i) => {
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `phantomfeed_chart_${i+1}.png`;
+      a.click();
+    });
+  });
+}
+
+function exportAnalyticsReport() {
+  const clientId = document.getElementById('client-sel').value;
+  const days = document.getElementById('days-sel').value;
+  let url = '/api/v1/export/items.csv?limit=5000';
+  if (clientId) url += '&client_id=' + clientId;
+  if (days) url += '&days=' + days;
+  window.open(url, '_blank');
 }
 
 (async () => {
