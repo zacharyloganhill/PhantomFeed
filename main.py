@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -103,6 +104,9 @@ async def root():
         "docs": f"http://{config.HOST}:{config.PORT}/docs",
         "stats": stats,
     }
+
+
+app.mount("/", StaticFiles(directory=".", html=True), name="static")
 
 
 if __name__ == "__main__":
