@@ -109,7 +109,11 @@ class BaseFetcher(ABC):
                     )
                 )
 
-        # Score new items in small concurrent batches (avoid flooding EPSS API)
+        # Score new items and run asset matching
+        if new_ids:
+            all_assets = await db.get_all_assets_for_matching()
+            from ingest.cpe_matcher import match_item_to_assets
+
         for item in items:
             item_id = item.get("id") or db.make_id(
                 item["feed_id"], item["title"], item.get("published_at", "")
@@ -121,6 +125,20 @@ class BaseFetcher(ABC):
                         await db.update_risk_score(item_id, rs)
                 except Exception:
                     pass
+                # Asset matching
+                if new_ids and all_assets:
+                    try:
+                        matches = match_item_to_assets(item, all_assets)
+                        for m in matches:
+                            await db.upsert_exposure(
+                                client_id=m["client_id"],
+                                item_id=item_id,
+                                asset_id=m["asset_id"],
+                                match_type=m["match_type"],
+                                confidence=m["confidence"],
+                            )
+                    except Exception:
+                        pass
 
         elapsed = (datetime.utcnow() - start).total_seconds()
         console.print(

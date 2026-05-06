@@ -21,6 +21,8 @@ async def list_items(
     search: Optional[str] = Query(None, description="Full-text search across title, desc, vendor, tags"),
     compliance: Optional[str] = Query(None, description="Filter by compliance tag: cmmc, nist, cis (partial match)"),
     sort: Optional[str] = Query(None, description="Sort order: 'risk' for risk score descending"),
+    client_id: Optional[str] = Query(None, description="Filter to items exposed to this client's assets"),
+    exposed_only: Optional[bool] = Query(None, description="When client_id set: show only items with confirmed exposures"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -35,6 +37,10 @@ async def list_items(
         limit=limit,
         offset=offset,
     )
+    # Client exposure filter (post-query for simplicity)
+    if client_id and exposed_only:
+        exposed_ids = await db.get_exposed_item_ids(client_id)
+        items = [i for i in items if i["id"] in exposed_ids]
     return {"count": len(items), "items": items}
 
 

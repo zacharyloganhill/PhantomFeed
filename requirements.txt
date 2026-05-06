@@ -18,3 +18,5 @@ reportlab>=4.0.0
 # STIX/TAXII
 taxii2-client>=2.3.0
 stix2>=3.0.0
+# File uploads
+python-multipart>=0.0.9

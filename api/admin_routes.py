@@ -1,7 +1,9 @@
 """PhantomFeed — Admin API Routes (client portal management)"""
 
+import csv
+import io
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -150,3 +152,137 @@ async def send_digest(
     items = await db.get_items(limit=500, sort="risk")
     result = await send_client_digest(client, items, days)
     return result
+
+
+# ── Assets ────────────────────────────────────────────────────────────────────
+
+@router.get("/clients/{client_id}/assets", summary="List client assets")
+async def list_assets(client_id: str, _: dict = Depends(require_admin)):
+    client = await db.get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    assets = await db.get_assets(client_id)
+    return {"client_id": client_id, "count": len(assets), "assets": assets}
+
+
+@router.post("/clients/{client_id}/assets/import", summary="Import assets from CSV")
+async def import_assets(
+    client_id: str,
+    file: UploadFile = File(...),
+    _: dict = Depends(require_admin),
+):
+    client = await db.get_client(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    content = await file.read()
+    text = content.decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+
+    imported = 0
+    errors = []
+    for i, row in enumerate(reader):
+        software = (row.get("software") or "").strip()
+        if not software:
+            errors.append(f"Row {i+2}: missing 'software' column")
+            continue
+        try:
+            await db.upsert_asset(
+                client_id=client_id,
+                software=software,
+                version=(row.get("version") or "").strip(),
+                hostname=(row.get("hostname") or "").strip(),
+                ip_address=(row.get("ip_address") or "").strip(),
+                os=(row.get("os") or "").strip(),
+                os_version=(row.get("os_version") or "").strip(),
+                cpe_string=(row.get("cpe_string") or "").strip(),
+                asset_type=(row.get("asset_type") or "workstation").strip(),
+            )
+            imported += 1
+        except Exception as exc:
+            errors.append(f"Row {i+2}: {exc}")
+
+    return {"imported": imported, "errors": errors[:20]}
+
+
+@router.delete("/clients/{client_id}/assets/{asset_id}", summary="Delete an asset")
+async def delete_asset(client_id: str, asset_id: str, _: dict = Depends(require_admin)):
+    await db.delete_asset(asset_id)
+    return {"status": "ok", "deleted": asset_id}
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+
+class WebhookCreate(BaseModel):
+    webhook_type: str  # generic, slack, splunk_hec, sentinel
+    url: str
+    secret: str = ""
+    min_severity: str = "HIGH"
+    categories: list = []
+
+
+class WebhookUpdate(BaseModel):
+    url: Optional[str] = None
+    secret: Optional[str] = None
+    min_severity: Optional[str] = None
+    categories: Optional[list] = None
+    is_active: Optional[int] = None
+
+
+@router.get("/clients/{client_id}/webhooks", summary="List webhooks for a client")
+async def list_webhooks(client_id: str, _: dict = Depends(require_admin)):
+    return {"webhooks": await db.get_webhooks(client_id)}
+
+
+@router.post("/clients/{client_id}/webhooks", summary="Create a webhook")
+async def create_webhook(client_id: str, req: WebhookCreate, _: dict = Depends(require_admin)):
+    wh = await db.create_webhook(
+        client_id=client_id,
+        webhook_type=req.webhook_type,
+        url=req.url,
+        secret=req.secret,
+        min_severity=req.min_severity,
+        categories=req.categories,
+    )
+    return wh
+
+
+@router.put("/clients/{client_id}/webhooks/{wh_id}", summary="Update a webhook")
+async def update_webhook(client_id: str, wh_id: str, req: WebhookUpdate, _: dict = Depends(require_admin)):
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    wh = await db.update_webhook(wh_id, **fields)
+    if not wh:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    return wh
+
+
+@router.delete("/clients/{client_id}/webhooks/{wh_id}", summary="Delete a webhook")
+async def delete_webhook(client_id: str, wh_id: str, _: dict = Depends(require_admin)):
+    await db.delete_webhook(wh_id)
+    return {"status": "ok", "deleted": wh_id}
+
+
+@router.post("/clients/{client_id}/webhooks/{wh_id}/test", summary="Send test payload to webhook")
+async def test_webhook(client_id: str, wh_id: str, _: dict = Depends(require_admin)):
+    from reports.webhook_dispatcher import WebhookDispatcher
+    wh = await db.get_webhook(wh_id)
+    if not wh:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    test_item = {
+        "id": "test-item-000",
+        "title": "PhantomFeed Test Webhook",
+        "severity": "HIGH",
+        "cvss": 7.5,
+        "risk_score": 6.0,
+        "vendor": "PhantomFeed",
+        "product": "Test",
+        "published_at": "2025-01-01",
+        "url": "https://github.com/zacharyloganhill/PhantomFeed",
+        "cve_ids": ["CVE-2024-TEST"],
+        "tags": ["Test", "Webhook"],
+        "compliance_tags": ["CMMC-RA"],
+        "category": "advisory",
+    }
+    dispatcher = WebhookDispatcher()
+    result = await dispatcher.dispatch_to_webhook(wh, test_item)
+    return {"status": result}
