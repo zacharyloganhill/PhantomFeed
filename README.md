@@ -159,6 +159,137 @@ curl "http://localhost:8000/api/ollama/api/tags"
 
 ---
 
+## Phase 2 Features
+
+### Asset Inventory & Exposure Matching
+
+Upload a CSV of client assets — PhantomFeed automatically matches incoming threat items to affected software using CPE strings, vendor/product tokens, and keyword matching:
+
+```
+POST /api/v1/admin/clients/{id}/assets/import    CSV upload
+GET  /api/v1/admin/clients/{id}/assets           List all assets
+GET  /api/v1/items?client_id={id}&exposed_only=true  Only matched items
+```
+
+**CSV format** (columns: `hostname`, `ip_address`, `os`, `os_version`, `software`, `version`, `cpe_string`, `asset_type`):
+```csv
+hostname,ip_address,os,os_version,software,version
+srv01,10.0.0.1,Windows,2019,Microsoft Windows Server,2019
+web01,10.0.0.2,Linux,Ubuntu 22.04,Apache HTTP Server,2.4.58
+```
+
+Confidence tiers: **1.0** exact CPE · **0.85** CPE prefix · **0.8** vendor+product · **0.7** vendor keyword · **0.5** vendor-only.
+
+### TAXII 2.1 / STIX Ingestion
+
+Polls TAXII 2.1 servers for STIX bundles. Incremental polling via stored `added_after` timestamps.
+
+Pre-configured sources:
+- **CISA AIS** — `https://ais2.cisa.dhs.gov/taxii2/` (requires cert — [register at cisa.gov/ais](https://www.cisa.gov/ais))
+- **CIRCL MISP** — public OSINT feed
+- **AlienVault OTX TAXII** — uses `OTX_API_KEY` as credential
+
+Add `TAXII_USERNAME`, `TAXII_PASSWORD`, `TAXII_CERT_PATH` to `.env`. Fetchers skip gracefully when credentials missing.
+
+```
+GET  /api/v1/taxii/sources          List configured servers and connection status
+POST /api/v1/taxii/test/{feed_id}   Test connection to a TAXII feed
+```
+
+### Remediation SLA Tracking
+
+Track vulnerability remediation with per-client SLA deadlines:
+
+| Severity | Default SLA |
+|----------|-------------|
+| CRITICAL | 15 days     |
+| HIGH     | 30 days     |
+| MEDIUM   | 90 days     |
+| LOW      | 180 days    |
+
+Override per client in `stack_profile`:
+```json
+{"sla": {"CRITICAL": 7, "HIGH": 14}}
+```
+
+```
+GET    /api/v1/clients/{id}/remediation        List remediation items + days remaining
+POST   /api/v1/clients/{id}/remediation        Create remediation item
+PATCH  /api/v1/clients/{id}/remediation/{rid}  Update status (open/in_progress/patched/accepted_risk/false_positive/wont_fix)
+GET    /api/v1/clients/{id}/metrics            MTTR, SLA compliance rate, open/overdue counts
+```
+
+SLA overdue check runs daily at 07:00 UTC.
+
+### Analytics Dashboard
+
+Visit **http://localhost:8000/analytics.html** for the executive analytics view:
+
+- **Threat volume trend** — 90-day line chart by severity (CRITICAL/HIGH/MEDIUM)
+- **Severity distribution** — doughnut chart
+- **Top vendors** — horizontal bar chart by risk volume
+- **Category breakdown** — stacked bar by category + severity
+- **Remediation MTTR trend** — avg days to patch over time
+- **Top risk items** — ranked by composite risk score
+
+Client selector dropdown switches all charts to a specific client's view. Date range: 30 / 60 / 90 days.
+
+### IOC Enrichment Engine
+
+Automatically enriches IPs, domains, URLs, and file hashes from malware/threat feeds. Cached for 24 hours.
+
+```
+GET /api/v1/ioc/lookup?value=8.8.8.8      Live enrichment (IP/hash/domain/URL)
+GET /api/v1/ioc/cache                      Recent cache entries
+```
+
+IOC Lookup widget is also built into the dashboard detail pane — type any value in the Quick Actions section.
+
+| API Key | Source | Enriches |
+|---------|--------|---------|
+| `ABUSEIPDB_API_KEY` | [abuseipdb.com](https://www.abuseipdb.com) | IP reputation score + country |
+| `GREYNOISE_API_KEY` | [greynoise.io](https://www.greynoise.io) | IP classification (benign/malicious/unknown) |
+| `VIRUSTOTAL_API_KEY` | [virustotal.com](https://www.virustotal.com) | Hash/domain/URL detection ratio |
+
+### SIEM Webhook Push
+
+Configure webhooks per client to push new threat items to your SIEM or alerting platform:
+
+```
+POST   /api/v1/admin/clients/{id}/webhooks           Create webhook
+GET    /api/v1/admin/clients/{id}/webhooks            List webhooks  
+PUT    /api/v1/admin/clients/{id}/webhooks/{wid}      Update
+DELETE /api/v1/admin/clients/{id}/webhooks/{wid}      Delete
+POST   /api/v1/admin/clients/{id}/webhooks/{wid}/test Send test payload
+```
+
+**Supported types:**
+
+| Type | Format | Auth |
+|------|--------|------|
+| `generic` | Plain JSON body | — |
+| `slack` | Block Kit attachment with severity color | Webhook URL |
+| `splunk_hec` | `{time, sourcetype:"phantomfeed:threat", event:{...}}` | `Authorization: Splunk {token}` |
+| `sentinel` | Azure Monitor Log Analytics, HMAC-SHA256 signed | `{workspace_id}:{workspace_key}` in secret |
+
+**Example — Slack webhook:**
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/clients/{id}/webhooks \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_type":"slack","url":"https://hooks.slack.com/T.../...","min_severity":"HIGH"}'
+```
+
+**Example — Splunk HEC:**
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/clients/{id}/webhooks \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_type":"splunk_hec","url":"https://splunk:8088/services/collector","secret":"your-hec-token","min_severity":"CRITICAL"}'
+```
+
+---
+
 ## Quick Actions (AI Analyst)
 
 Each item in the dashboard has four **Quick Actions** that send a pre-built prompt to your local Ollama model:

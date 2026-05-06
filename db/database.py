@@ -484,6 +484,12 @@ async def update_client(client_id: str, name: str = None, contact_email: str = N
 
 async def delete_client(client_id: str):
     db = get_db()
+    # Delete dependents first (FK constraints)
+    await db.execute("DELETE FROM asset_exposures WHERE client_id = ?", (client_id,))
+    await db.execute("DELETE FROM client_assets WHERE client_id = ?", (client_id,))
+    await db.execute("DELETE FROM remediation_items WHERE client_id = ?", (client_id,))
+    await db.execute("DELETE FROM webhook_configs WHERE client_id = ?", (client_id,))
+    await db.execute("DELETE FROM users WHERE client_id = ?", (client_id,))
     await db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     await db.commit()
 
