@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhantomFeed — Analytics</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a0d;--bg2:#0c0f14;--bg3:#111620;--bg4:#161c28;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#c9d4e3;--muted:#4e5d72;
+  --teal:#00d4aa;--red:#f0595a;--amber:#e8a530;--blue:#4d9de0;
+  --purple:#9b8ef5;--green:#3dd68c;--pink:#e878a6;
+  --mono:'JetBrains Mono',monospace;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1e2836}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:0 20px;height:44px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.logo{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--teal)}
+.vsep{width:1px;height:18px;background:var(--border)}
+.tbtn{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;text-decoration:none;display:inline-block;transition:all .15s}
+.tbtn:hover{border-color:var(--teal);color:var(--teal)}
+.tbtn.on{border-color:var(--teal);color:var(--teal)}
+.spacer{flex:1}
+
+.controls{display:flex;align-items:center;gap:10px;padding:10px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.ctrl-lbl{font-size:8px;letter-spacing:1px;color:var(--muted)}
+select{font-family:var(--mono);font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;outline:none}
+select:focus{border-color:var(--teal)}
+.dbtn{font-family:var(--mono);font-size:8px;padding:4px 9px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .12s}
+.dbtn.on,.dbtn:hover{border-color:var(--teal);color:var(--teal);background:rgba(0,212,170,.08)}
+
+.page{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1600px;margin:0 auto}
+
+.stat-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);padding:18px;position:relative}
+.stat-card .snum{font-size:32px;font-weight:700;line-height:1}
+.stat-card .slbl{font-size:8px;letter-spacing:1.5px;color:var(--muted);margin-top:6px;text-transform:uppercase}
+.stat-card .sarr{position:absolute;top:14px;right:14px;font-size:16px}
+
+.chart-card{background:var(--bg2);border:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:10px}
+.chart-card.wide{grid-column:1/-1}
+.chtitle{font-size:8px;letter-spacing:2px;color:var(--teal);text-transform:uppercase}
+.chart-wrap{position:relative;height:220px}
+.chart-wrap.tall{height:300px}
+
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">PHANTOMFEED</span>
+  <div class="vsep"></div>
+  <a href="/dashboard.html" class="tbtn">← FEED</a>
+  <a href="/analytics.html" class="tbtn on">ANALYTICS</a>
+  <a href="/admin.html" class="tbtn">ADMIN</a>
+  <div class="spacer"></div>
+  <span style="font-size:9px;color:var(--muted)" id="last-updated">—</span>
+</div>
+
+<div class="controls">
+  <span class="ctrl-lbl">CLIENT</span>
+  <select id="client-sel" onchange="switchClient()">
+    <option value="">All (MSP View)</option>
+  </select>
+  <div class="vsep"></div>
+  <span class="ctrl-lbl">PERIOD</span>
+  <button class="dbtn" onclick="setPeriod(30,this)">30d</button>
+  <button class="dbtn on" onclick="setPeriod(90,this)">90d</button>
+  <button class="dbtn" onclick="setPeriod(60,this)">60d</button>
+</div>
+
+<div class="page">
+
+  <!-- Stat cards -->
+  <div class="stat-row" id="stat-row">
+    <div class="stat-card"><div class="snum" id="s-total">—</div><div class="slbl">Total Items</div></div>
+    <div class="stat-card"><div class="snum" style="color:var(--red)" id="s-crit">—</div><div class="slbl">New Critical</div></div>
+    <div class="stat-card"><div class="snum" style="color:var(--amber)" id="s-over">—</div><div class="slbl">Overdue Remediations</div></div>
+    <div class="stat-card"><div class="snum" style="color:var(--blue)" id="s-mttr">—</div><div class="slbl">Avg MTTR (days)</div></div>
+  </div>
+
+  <!-- Trend chart -->
+  <div class="chart-card wide">
+    <div class="chtitle">Threat Volume Trend</div>
+    <div class="chart-wrap tall"><canvas id="trend-chart"></canvas></div>
+  </div>
+
+  <!-- Severity doughnut -->
+  <div class="chart-card">
+    <div class="chtitle">Severity Distribution</div>
+    <div class="chart-wrap"><canvas id="sev-chart"></canvas></div>
+  </div>
+
+  <!-- Category breakdown -->
+  <div class="chart-card">
+    <div class="chtitle">Category Breakdown</div>
+    <div class="chart-wrap"><canvas id="cat-chart"></canvas></div>
+  </div>
+
+  <!-- Top vendors -->
+  <div class="chart-card wide">
+    <div class="chtitle">Top Vendors by Risk Volume</div>
+    <div class="chart-wrap"><canvas id="vendor-chart"></canvas></div>
+  </div>
+
+  <!-- Remediation MTTR trend -->
+  <div class="chart-card">
+    <div class="chtitle">Remediation MTTR Trend</div>
+    <div class="chart-wrap"><canvas id="mttr-chart"></canvas></div>
+  </div>
+
+  <!-- Top risks table -->
+  <div class="chart-card">
+    <div class="chtitle">Top Risk Items</div>
+    <div id="top-risks" style="overflow-y:auto;max-height:220px"></div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:8000/api/v1';
+const SC = {CRITICAL:'#f0595a',HIGH:'#e8a530',MEDIUM:'#4d9de0',LOW:'#4e5d72',INFO:'#9b8ef5'};
+let state = {client_id: '', days: 90};
+const charts = {};
+
+const CHART_DEFAULTS = {
+  color: '#c9d4e3',
+  plugins: {legend:{labels:{color:'#c9d4e3',font:{family:'JetBrains Mono',size:10},boxWidth:10}}},
+  scales: {
+    x:{ticks:{color:'#4e5d72',font:{family:'JetBrains Mono',size:9}},grid:{color:'rgba(255,255,255,.04)'}},
+    y:{ticks:{color:'#4e5d72',font:{family:'JetBrains Mono',size:9}},grid:{color:'rgba(255,255,255,.06)'}},
+  }
+};
+
+async function apiFetch(path) {
+  try {
+    const r = await fetch(API + path);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+function qs(extra = {}) {
+  const p = new URLSearchParams({days: state.days});
+  if (state.client_id) p.set('client_id', state.client_id);
+  Object.entries(extra).forEach(([k,v]) => p.set(k,v));
+  return '?' + p;
+}
+
+async function loadClients() {
+  const d = await apiFetch('/admin/clients');
+  if (!d) return;
+  const sel = document.getElementById('client-sel');
+  (d.clients || []).forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  // Check URL param
+  const urlClient = new URLSearchParams(location.search).get('client');
+  if (urlClient) {
+    sel.value = urlClient;
+    state.client_id = urlClient;
+  }
+}
+
+async function loadSummary() {
+  const d = await apiFetch('/analytics/summary' + qs());
+  if (!d) return;
+  document.getElementById('s-total').textContent = d.total_items ?? '—';
+  document.getElementById('s-crit').textContent  = d.critical_items ?? '—';
+  document.getElementById('s-over').textContent  = d.overdue_remediations ?? '—';
+  document.getElementById('s-mttr').textContent  = d.mttr_avg_days != null ? d.mttr_avg_days + 'd' : '—';
+}
+
+async function loadTrend() {
+  const d = await apiFetch('/analytics/trend' + qs());
+  if (!d) return;
+
+  const daySet = new Set();
+  const sevData = {CRITICAL:[], HIGH:[], MEDIUM:[]};
+  const dayMap = {}; // day -> {sev: cnt}
+
+  (d.data || []).forEach(r => {
+    daySet.add(r.day);
+    dayMap[r.day] = dayMap[r.day] || {};
+    dayMap[r.day][r.severity] = r.cnt;
+  });
+
+  const labels = [...daySet].sort();
+  const datasets = Object.entries(sevData).map(([sev]) => ({
+    label: sev,
+    data: labels.map(day => (dayMap[day] || {})[sev] || 0),
+    borderColor: SC[sev],
+    backgroundColor: SC[sev] + '22',
+    tension: 0.4,
+    fill: true,
+    pointRadius: 2,
+    borderWidth: 1.5,
+  }));
+
+  destroyChart('trend-chart');
+  charts['trend-chart'] = new Chart(document.getElementById('trend-chart'), {
+    type: 'line',
+    data: {labels, datasets},
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {...CHART_DEFAULTS.plugins},
+      scales: CHART_DEFAULTS.scales,
+      responsive: true,
+      maintainAspectRatio: false,
+    }
+  });
+}
+
+async function loadSevDoughnut() {
+  const stats = await apiFetch('/stats');
+  if (!stats) return;
+  const sv = stats.by_severity || {};
+  const labels = Object.keys(sv);
+  const data = labels.map(l => sv[l]);
+  const colors = labels.map(l => SC[l] || '#4e5d72');
+
+  destroyChart('sev-chart');
+  charts['sev-chart'] = new Chart(document.getElementById('sev-chart'), {
+    type: 'doughnut',
+    data: {labels, datasets: [{data, backgroundColor: colors, borderWidth:0}]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend:{labels:{color:'#c9d4e3',font:{family:'JetBrains Mono',size:9},boxWidth:8}}},
+    }
+  });
+}
+
+async function loadCategoryChart() {
+  const d = await apiFetch('/analytics/by-category' + qs());
+  if (!d) return;
+
+  const catMap = {};
+  (d.data || []).forEach(r => {
+    catMap[r.category] = catMap[r.category] || {};
+    catMap[r.category][r.severity] = r.cnt;
+  });
+  const cats = Object.keys(catMap);
+  const sevs = ['CRITICAL','HIGH','MEDIUM','LOW'];
+  const datasets = sevs.map(sev => ({
+    label: sev,
+    data: cats.map(c => (catMap[c] || {})[sev] || 0),
+    backgroundColor: SC[sev] + 'cc',
+    borderWidth: 0,
+  }));
+
+  destroyChart('cat-chart');
+  charts['cat-chart'] = new Chart(document.getElementById('cat-chart'), {
+    type: 'bar',
+    data: {labels: cats, datasets},
+    options: {
+      ...CHART_DEFAULTS,
+      responsive: true, maintainAspectRatio: false,
+      plugins: {...CHART_DEFAULTS.plugins},
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        x: {...CHART_DEFAULTS.scales.x, stacked: true},
+        y: {...CHART_DEFAULTS.scales.y, stacked: true},
+      },
+    }
+  });
+}
+
+async function loadVendorChart() {
+  const d = await apiFetch('/analytics/by-vendor' + qs());
+  if (!d) return;
+  const vendors = (d.vendors || []).slice(0, 10);
+  const labels = vendors.map(v => v.vendor.slice(0, 20));
+  const critical = vendors.map(v => (v.by_severity || {}).CRITICAL || 0);
+  const high     = vendors.map(v => (v.by_severity || {}).HIGH || 0);
+  const medium   = vendors.map(v => (v.by_severity || {}).MEDIUM || 0);
+
+  destroyChart('vendor-chart');
+  charts['vendor-chart'] = new Chart(document.getElementById('vendor-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label:'CRITICAL', data:critical, backgroundColor: SC.CRITICAL + 'cc', borderWidth:0},
+        {label:'HIGH',     data:high,     backgroundColor: SC.HIGH + 'cc',     borderWidth:0},
+        {label:'MEDIUM',   data:medium,   backgroundColor: SC.MEDIUM + 'cc',   borderWidth:0},
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {...CHART_DEFAULTS.plugins},
+      scales: {
+        x: {...CHART_DEFAULTS.scales.x, stacked: true},
+        y: {...CHART_DEFAULTS.scales.y, stacked: true},
+      },
+    }
+  });
+}
+
+async function loadMTTRChart() {
+  if (!state.client_id) {
+    document.getElementById('mttr-chart').parentElement.innerHTML += '<div style="color:var(--muted);font-size:9px;padding:20px">Select a client to view MTTR trend</div>';
+    return;
+  }
+  const d = await apiFetch('/analytics/remediation-trend' + qs());
+  if (!d || !d.data.length) return;
+
+  const points = (d.data || []).map(r => ({x: r.patched_date, y: r.ttd}));
+  destroyChart('mttr-chart');
+  charts['mttr-chart'] = new Chart(document.getElementById('mttr-chart'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Days to Patch',
+        data: points,
+        borderColor: '#00d4aa',
+        backgroundColor: 'rgba(0,212,170,.1)',
+        pointRadius: 3, borderWidth: 1.5, tension: 0.3,
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      responsive: true, maintainAspectRatio: false,
+      parsing: {xAxisKey: 'x', yAxisKey: 'y'},
+      scales: {
+        x: {...CHART_DEFAULTS.scales.x, type: 'category'},
+        y: {...CHART_DEFAULTS.scales.y, title: {display: true, text: 'Days', color:'#4e5d72', font:{size:9}}},
+      }
+    }
+  });
+}
+
+async function loadTopRisks() {
+  const d = await apiFetch('/analytics/top-risks' + qs({limit: 10}));
+  if (!d) return;
+  const el = document.getElementById('top-risks');
+  el.innerHTML = (d.items || []).map(i => {
+    const sev = i.severity;
+    const rs = i.risk_score != null ? i.risk_score.toFixed(1) : '—';
+    return `<div style="padding:5px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+      <span style="font-size:8px;color:${SC[sev]||'#4e5d72'};white-space:nowrap;font-weight:700">${sev}</span>
+      <span style="flex:1;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.title)}</span>
+      <span style="font-size:10px;font-weight:700;color:${riskColor(i.risk_score)}">${rs}</span>
+    </div>`;
+  }).join('');
+}
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function riskColor(r){if(!r)return'var(--muted)';if(r>=8)return'var(--red)';if(r>=6)return'var(--amber)';if(r>=3)return'var(--blue)';return'var(--muted)';}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+async function loadAll() {
+  document.getElementById('last-updated').textContent = 'Loading...';
+  await Promise.all([
+    loadSummary(), loadTrend(), loadSevDoughnut(),
+    loadCategoryChart(), loadVendorChart(), loadMTTRChart(), loadTopRisks()
+  ]);
+  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+function switchClient() {
+  state.client_id = document.getElementById('client-sel').value;
+  loadAll();
+}
+
+function setPeriod(days, btn) {
+  state.days = days;
+  document.querySelectorAll('.dbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  loadAll();
+}
+
+(async () => {
+  await loadClients();
+  await loadAll();
+})();
+</script>
+</body>
+</html>
