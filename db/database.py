@@ -304,6 +304,20 @@ CREATE TABLE IF NOT EXISTS tabletop_exercises (
 );
 """
 
+CREATE_KSI_RESULTS = """
+CREATE TABLE IF NOT EXISTS ksi_results (
+    id            TEXT PRIMARY KEY,
+    client_id     TEXT NOT NULL,
+    ksi_id        TEXT NOT NULL,
+    ksi_name      TEXT NOT NULL,
+    status        TEXT NOT NULL,
+    score         REAL NOT NULL,
+    details       TEXT DEFAULT '{}',
+    validated_at  TEXT NOT NULL,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
 CREATE_SIEM_CONFIGS = """
 CREATE TABLE IF NOT EXISTS siem_configs (
     id                  TEXT PRIMARY KEY,
@@ -424,6 +438,7 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_POSTURE_SCORES)
     await _db.execute(CREATE_CMMC_ASSESSMENTS)
     await _db.execute(CREATE_TABLETOP_EXERCISES)
+    await _db.execute(CREATE_KSI_RESULTS)
     await _db.execute(CREATE_SIEM_CONFIGS)
     await _db.execute(CREATE_SCANNER_CONFIGS)
     await _db.execute(CREATE_SCAN_FINDINGS)
@@ -1832,3 +1847,87 @@ def _siem_row(row) -> dict:
     except Exception:
         d["extra_config"] = {}
     return d
+
+
+# ── KSI Results CRUD ──────────────────────────────────────────────────────────
+
+async def save_ksi_result(result: dict):
+    db = get_db()
+    await db.execute(
+        """INSERT INTO ksi_results
+           (id, client_id, ksi_id, ksi_name, status, score, details, validated_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (result["id"], result["client_id"], result["ksi_id"], result["ksi_name"],
+         result["status"], result["score"], json.dumps(result.get("details", {})),
+         result["validated_at"]),
+    )
+    await db.commit()
+
+
+async def get_latest_ksi_results(client_id: str) -> list[dict]:
+    """Return the most recent result for each KSI ID."""
+    db = get_db()
+    async with db.execute(
+        """SELECT * FROM ksi_results WHERE client_id = ?
+           AND validated_at = (
+               SELECT MAX(r2.validated_at) FROM ksi_results r2
+               WHERE r2.client_id = ksi_results.client_id
+               AND r2.ksi_id = ksi_results.ksi_id
+           )
+           ORDER BY ksi_id""",
+        (client_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["details"] = json.loads(d.get("details") or "{}")
+        except Exception:
+            d["details"] = {}
+        result.append(d)
+    return result
+
+
+async def get_ksi_history(client_id: str, ksi_id: str, limit: int = 30) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        """SELECT * FROM ksi_results WHERE client_id = ? AND ksi_id = ?
+           ORDER BY validated_at DESC LIMIT ?""",
+        (client_id, ksi_id, limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["details"] = json.loads(d.get("details") or "{}")
+        except Exception:
+            d["details"] = {}
+        result.append(d)
+    return result
+
+
+async def get_all_clients_ksi_summary() -> list[dict]:
+    """Aggregate latest KSI pass/fail counts across all clients — for global dashboard."""
+    db = get_db()
+    async with db.execute("SELECT id, name FROM clients ORDER BY name") as cur:
+        clients = await cur.fetchall()
+    summaries = []
+    for c in clients:
+        cid = c["id"]
+        results = await get_latest_ksi_results(cid)
+        passing = sum(1 for r in results if r["status"] == "pass")
+        conditional = sum(1 for r in results if r["status"] == "conditional")
+        failing = sum(1 for r in results if r["status"] == "fail")
+        avg_score = (sum(r["score"] for r in results) / len(results)) if results else None
+        summaries.append({
+            "client_id": cid,
+            "client_name": c["name"],
+            "total_ksis": len(results),
+            "passing": passing,
+            "conditional": conditional,
+            "failing": failing,
+            "avg_score": round(avg_score, 3) if avg_score is not None else None,
+        })
+    return summaries

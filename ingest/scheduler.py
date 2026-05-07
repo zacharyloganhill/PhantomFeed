@@ -210,12 +210,72 @@ def start_scheduler():
         misfire_grace_time=600,
     )
 
+    # FedRAMP KSI validation — every 6 hours
+    from api.ksi_routes import run_all_ksi_validations
+    scheduler.add_job(
+        run_all_ksi_validations,
+        trigger=IntervalTrigger(hours=6),
+        id="ksi_validation",
+        name="FedRAMP KSI Validation",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+
+    # FedRAMP scanner polls — every hour, pick up configs from DB
+    scheduler.add_job(
+        _poll_all_scanners_and_siems,
+        trigger=IntervalTrigger(hours=1),
+        id="fedramp_scanner_poll",
+        name="FedRAMP Scanner/SIEM Poll",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+
     scheduler.start()
     console.print(
         f"[green]✓ Scheduler started[/] — "
         f"{len(fast_feeds)} fast feeds (every {config.POLL_FAST}m), "
         f"{len(slow_feeds)} slow feeds (every {config.POLL_SLOW}m)"
     )
+
+
+async def _poll_all_scanners_and_siems():
+    """Hourly job: poll any scanner/SIEM whose interval has elapsed."""
+    from datetime import timezone
+    from db import database as _db
+    from api.scanner_routes import _run_scanner
+    from api.siem_routes import _run_siem
+    now = datetime.utcnow()
+    try:
+        for scanner in await _db.get_all_active_scanner_configs():
+            last = scanner.get("last_polled")
+            interval_h = scanner.get("poll_interval_hours", 6)
+            if last:
+                try:
+                    elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 3600
+                    if elapsed < interval_h:
+                        continue
+                except ValueError:
+                    pass
+            await _run_scanner(scanner)
+    except Exception as exc:
+        console.print(f"[red]Scanner poll error: {exc}[/]")
+    try:
+        for siem in await _db.get_all_active_siem_configs():
+            last = siem.get("last_polled")
+            interval_h = siem.get("poll_interval_hours", 6)
+            if last:
+                try:
+                    elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 3600
+                    if elapsed < interval_h:
+                        continue
+                except ValueError:
+                    pass
+            await _run_siem(siem)
+    except Exception as exc:
+        console.print(f"[red]SIEM poll error: {exc}[/]")
 
 
 async def _send_weekly_digests():
