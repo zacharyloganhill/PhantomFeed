@@ -419,6 +419,182 @@ Copy `.env.example` to `.env` and set values as needed. All variables are option
 
 ---
 
+## Phase 3 — Market Differentiators
+
+### Dark Web & Paste Site Monitoring
+
+Monitors dark web data breach sources for client name mentions:
+
+| Monitor | Source | Notes |
+|---------|--------|-------|
+| RansomWatch | github.com/joshhighet/ransomwatch | Ransomware group victim posts — fuzzy name matching |
+| Pastebin Scraper | scrape.pastebin.com | Requires Pastebin Pro account |
+| GitHub Gists | api.github.com/gists/public | Public gist leak detection |
+| HIBP Domain Breach | haveibeenpwned.com | Domain breach lookup (API key required) |
+
+```
+GET  /api/v1/clients/{id}/darkweb-alerts                    List alerts (unacknowledged_only filter)
+POST /api/v1/clients/{id}/darkweb-alerts/{alert_id}/acknowledge
+POST /api/v1/clients/{id}/darkweb-scan                      Trigger immediate scan
+GET  /api/v1/notifications                                  Aggregated notification center
+```
+
+Dark web alerts appear in the client dashboard notification center and Dark Web tab.
+
+### Threat Actor Dossier Database
+
+55 tracked threat actors with MITRE ATT&CK alignment:
+
+- APT1, APT10, APT28, APT29, APT32, APT34, APT38, APT40, APT41
+- Lazarus Group, Sandworm, Volt Typhoon, Scattered Spider, BlackCat, LockBit, Cl0p, and more
+
+Each actor dossier includes: origin, sponsor, motivation, TTPs (MITRE IDs), known malware, target industries, recent activity.
+
+Open **http://localhost:8000/actors.html** to browse the full dossier browser.
+
+```
+GET /api/v1/actors                              List all actors (filterable by origin/motivation)
+GET /api/v1/actors/{id}                         Full dossier
+GET /api/v1/actors/{id}/items                   Threat items linked to this actor
+GET /api/v1/clients/{id}/actor-alerts           Actors targeting client's industry
+```
+
+### MISP Integration
+
+Pull and push threat events from/to a MISP instance:
+
+```env
+MISP_URL=https://your-misp-instance
+MISP_API_KEY=your_api_key
+MISP_VERIFY_SSL=true
+```
+
+```
+GET  /api/v1/misp/status          Connection status
+POST /api/v1/misp/sync            Trigger MISP event pull (background)
+GET  /api/v1/misp/events          Recently pulled MISP events
+POST /api/v1/misp/push/{item_id}  Push a PhantomFeed item to MISP
+```
+
+### Automated Executive Briefing Deck
+
+Generate a 12-slide PowerPoint briefing deck with AI-written summaries and matplotlib charts.
+
+```
+GET /api/v1/clients/{id}/deck.pptx?days=30     Download PPTX (supports ?token= for window.open)
+GET /api/v1/clients/{id}/deck-preview           JSON slide outline for preview
+```
+
+Slides: Title → Executive Summary (Ollama AI) → Threat Landscape → Top 5 Threats → CISA KEV → Threat Actors → Vendor Risk Bar Chart → Compliance Impact → Asset Exposure → Remediation Donut Chart → Recommended Actions (AI) → Contact
+
+Requires: `pip install python-pptx matplotlib Pillow` (included in requirements.txt)
+
+### Peer Benchmarking Engine
+
+Calculate a 0–100 posture score and industry percentile ranking:
+
+| Component | Weight | Metric |
+|-----------|--------|--------|
+| SLA Compliance | 30 pts | % remediations closed before SLA deadline |
+| MTTR | 30 pts | Mean time to remediate vs industry median |
+| Open Criticals | 20 pts | Inverted count of open CRITICAL items |
+| Patch Velocity | 20 pts | Items patched in last 30 days / total open |
+
+Industry baselines for 9 sectors: Technology, Finance, Healthcare, Government, Retail, Energy, Education, Manufacturing, Legal.
+
+```
+GET /api/v1/clients/{id}/posture            Current score, grade, percentile, component breakdown
+GET /api/v1/clients/{id}/posture/history    Historical score snapshots
+GET /api/v1/benchmarks/{industry}           Industry baseline statistics
+GET /api/v1/benchmarks                      All clients ranked by score
+```
+
+### CMMC 2.0 Dynamic Gap Assessment
+
+All 110 NIST SP 800-171 Rev 2 / CMMC Level 2 practices across 14 domains.
+
+Open **http://localhost:8000/cmmc.html** for the full interactive gap assessment UI.
+
+- Auto-derived status from active threat intelligence (compliance_tags mapping)
+- Manual override per practice with notes
+- Bulk update and CSV export
+- Domain-level scoring and overall compliance percentage
+
+```
+GET    /api/v1/clients/{id}/cmmc/assessment
+PATCH  /api/v1/clients/{id}/cmmc/practices/{practice_id}
+POST   /api/v1/clients/{id}/cmmc/bulk-update
+GET    /api/v1/cmmc/practices?domain=Access+Control
+```
+
+### Tabletop Exercise Generator
+
+AI-powered tabletop exercises with 8 scenario types:
+
+`ransomware` · `supply_chain` · `data_breach` · `insider_threat` · `ddos` · `phishing` · `zero_day` · `cloud_breach`
+
+Each exercise includes: scenario overview, 5 exercise objectives, per-phase situation+inject+discussion questions+expected actions, debrief questions. Exports to PDF (reportlab) and PPTX (python-pptx).
+
+```
+GET  /api/v1/clients/{id}/tabletops
+POST /api/v1/clients/{id}/tabletops/generate    {scenario_type, custom_prompt}
+GET  /api/v1/clients/{id}/tabletops/{id}/export.pdf
+GET  /api/v1/clients/{id}/tabletops/{id}/export.pptx
+GET  /api/v1/tabletop/scenario-types
+```
+
+### Supply Chain Risk Graph
+
+Track vendor software exposure with a D3.js force-directed risk graph.
+
+Open **http://localhost:8000/supplychain.html** for the interactive graph view.
+
+```
+GET    /api/v1/clients/{id}/vendors                List vendors with risk levels
+POST   /api/v1/clients/{id}/vendors                Add vendor {vendor_name, products, criticality}
+DELETE /api/v1/clients/{id}/vendors/{vendor_id}    Remove vendor
+POST   /api/v1/clients/{id}/vendors/scan           Trigger background risk scoring
+GET    /api/v1/clients/{id}/supply-chain-graph     D3.js {nodes, links} graph data
+```
+
+Vendors are risk-scored by scanning the threat feed for name/product matches. Red = high risk, amber = medium, green = low.
+
+### Breach Cost & ROI Calculator
+
+Expected financial loss per threat item using IBM Cost of a Data Breach Report 2024 models:
+
+| Industry | Average Breach Cost |
+|----------|---------------------|
+| Healthcare | $9.77M |
+| Finance | $6.08M |
+| Technology | $5.10M |
+| Energy | $4.72M |
+| Manufacturing | $4.20M |
+
+```
+GET /api/v1/clients/{id}/risk-portfolio     Full portfolio: total exposure, patched vs unpatched, ROI ratios, top 20 items
+GET /api/v1/breach-cost/industries          IBM 2024 baseline by industry
+```
+
+Risk Portfolio is displayed in the client dashboard's Risk Portfolio tab with `$` exposure amounts and patch ROI ratios.
+
+---
+
+## Pages
+
+| URL | Description |
+|-----|-------------|
+| `/dashboard.html` | Main threat feed — real-time, filterable, AI analyst |
+| `/analytics.html` | Charts: trend, vendor, category, MTTR, heatmap |
+| `/actors.html` | Threat actor dossier browser with ATT&CK heatmap |
+| `/cmmc.html` | CMMC 2.0 gap assessment — 110 practices, 14 domains |
+| `/supplychain.html` | Supply chain risk graph (D3.js force-directed) |
+| `/upload.html` | Scan upload center and export tools |
+| `/admin.html` | Client management, assets, users, exports |
+| `/client_dashboard.html?client_id={id}` | Per-client portal with all Phase 3 features |
+
+---
+
 ## Contributing
 
 PRs and issues are welcome. If you add a new feed source, fix a parser, or improve the dashboard — open a pull request. If a feed is broken or returning bad data, open an issue with the feed ID and a sample of what you're seeing.
