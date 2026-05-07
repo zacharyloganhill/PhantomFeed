@@ -86,6 +86,10 @@ PUBLIC_MISP_FEEDS = [
     {"name": "abuse.ch MISP", "url": "https://urlhaus.abuse.ch/downloads/misp/", "format": "misp"},
 ]
 
+# ── FedRAMP 20x — Encryption Key ─────────────────────────────────────────────
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+PHANTOMFEED_ENCRYPTION_KEY = os.getenv("PHANTOMFEED_ENCRYPTION_KEY", "")
+
 # ── MSP Contact (for report footers) ─────────────────────────────────────────
 MSP_NAME    = os.getenv("MSP_NAME", "PhantomFeed MSP")
 MSP_EMAIL   = os.getenv("MSP_EMAIL", "")

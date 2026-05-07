@@ -189,24 +189,28 @@ function renderClientPanel() {
       <button class="tab" onclick="cTab('history')">Import History</button>
       <button class="tab" onclick="cTab('export')">Export</button>
       <button class="tab" onclick="cTab('users')">Users</button>
+      <button class="tab" onclick="cTab('scanners')">Scanners</button>
     </div>
 
     <div id="cpane-assets" class="tab-pane active"></div>
     <div id="cpane-history" class="tab-pane"></div>
     <div id="cpane-export" class="tab-pane"></div>
     <div id="cpane-users" class="tab-pane"></div>
+    <div id="cpane-scanners" class="tab-pane"></div>
   `;
   loadAssetsTab();
 }
 
 function cTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['assets','history','export','users'][i]===name));
+  const tabs = ['assets','history','export','users','scanners'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', tabs[i]===name));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('cpane-'+name).classList.add('active');
   if (name==='assets') loadAssetsTab();
   else if (name==='history') loadHistoryTab();
   else if (name==='export') renderExportTab();
   else if (name==='users') loadUsersTab();
+  else if (name==='scanners') loadScannersTab();
 }
 
 // ── Assets tab ─────────────────────────────────────────────────────────────────
@@ -477,6 +481,127 @@ async function deleteClient(id) {
 }
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Scanners tab ───────────────────────────────────────────────────────────────
+const SCANNER_TYPES = ['tenable','rapid7','qualys','crowdstrike'];
+
+async function loadScannersTab() {
+  const el = document.getElementById('cpane-scanners');
+  if (!el || !selectedClient) return;
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/clients/${selectedClient.id}/scanners`, {headers:{Authorization:'Bearer '+getToken()}});
+    const data = r.ok ? await r.json() : {scanners:[]};
+    const scanners = data.scanners || [];
+    el.innerHTML = `
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center">
+        <span>FedRAMP Scanners</span>
+        <button class="btn sm primary" onclick="showAddScanner()">+ Add Scanner</button>
+      </div>
+      ${scanners.length ? `<table>
+        <thead><tr><th>Type</th><th>Label</th><th>Host</th><th>Interval</th><th>Status</th><th>Last Polled</th><th></th></tr></thead>
+        <tbody>${scanners.map(s=>`
+          <tr>
+            <td><span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--teal)">${esc(s.scanner_type)}</span></td>
+            <td>${esc(s.label)}</td>
+            <td style="font-size:9px;color:var(--muted)">${esc(s.host_url||'cloud')}</td>
+            <td>${s.poll_interval_hours}h</td>
+            <td style="font-size:9px;color:${(s.last_status||'').startsWith('ok')?'var(--green)':'var(--muted)'}">${esc((s.last_status||'never').slice(0,40))}</td>
+            <td style="font-size:9px;color:var(--muted)">${(s.last_polled||'Never').slice(0,16)}</td>
+            <td>
+              <button class="btn sm" onclick="triggerScannerPoll('${s.id}')">Poll Now</button>
+              <button class="btn sm" onclick="deleteScanner('${s.id}')" style="color:var(--red)">Del</button>
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>` : '<div class="empty">No scanners configured. Add Tenable, Rapid7, Qualys, or CrowdStrike.</div>'}
+      <div id="scanner-form" style="display:none;margin-top:16px;border:1px solid var(--border);padding:16px;border-radius:4px">
+        <div class="section-header">Add Scanner</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label style="font-size:9px;color:var(--muted);display:block">Type
+            <select id="sc-type" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+              ${SCANNER_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Label
+            <input id="sc-label" type="text" placeholder="My Tenable" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Host URL (leave blank for cloud)
+            <input id="sc-host" type="text" placeholder="https://console:3780" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Poll Interval (hours)
+            <input id="sc-interval" type="number" value="6" min="1" max="168" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">API Key / Client ID
+            <input id="sc-apikey" type="password" placeholder="encrypted at rest" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Secret Key / Client Secret
+            <input id="sc-secret" type="password" placeholder="encrypted at rest" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Username (on-prem)
+            <input id="sc-user" type="text" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+          <label style="font-size:9px;color:var(--muted);display:block">Password (on-prem)
+            <input id="sc-pass" type="password" style="width:100%;margin-top:4px;background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:5px;font-family:var(--mono);font-size:9px">
+          </label>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn sm primary" onclick="submitAddScanner()">Save Scanner</button>
+          <button class="btn sm" onclick="document.getElementById('scanner-form').style.display='none'">Cancel</button>
+        </div>
+        <div style="margin-top:8px;font-size:9px;color:var(--muted)">Credentials are Fernet-encrypted before storage and never returned in API responses.</div>
+      </div>
+    `;
+  } catch(e) { el.innerHTML = '<div class="empty">Error loading scanners</div>'; }
+}
+
+function showAddScanner() {
+  const f = document.getElementById('scanner-form');
+  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function submitAddScanner() {
+  const body = {
+    scanner_type: document.getElementById('sc-type').value,
+    label: document.getElementById('sc-label').value,
+    host_url: document.getElementById('sc-host').value,
+    api_key: document.getElementById('sc-apikey').value,
+    secret_key: document.getElementById('sc-secret').value,
+    username: document.getElementById('sc-user').value,
+    password: document.getElementById('sc-pass').value,
+    poll_interval_hours: parseInt(document.getElementById('sc-interval').value) || 6,
+  };
+  if (!body.label) { toast('Label required','error'); return; }
+  try {
+    const r = await fetch(`${API}/clients/${selectedClient.id}/scanners`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+      body: JSON.stringify(body),
+    });
+    if (r.ok) { toast('Scanner added','success'); loadScannersTab(); }
+    else { const d = await r.json(); throw new Error(d.detail||'Error'); }
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+
+async function triggerScannerPoll(scannerId) {
+  try {
+    const r = await fetch(`${API}/clients/${selectedClient.id}/scanners/${scannerId}/poll`, {
+      method:'POST', headers:{Authorization:'Bearer '+getToken()}
+    });
+    if (r.ok) toast('Poll triggered — check status in a few seconds','success');
+    else toast('Poll failed','error');
+    setTimeout(()=>loadScannersTab(), 3000);
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+
+async function deleteScanner(scannerId) {
+  if (!confirm('Delete this scanner configuration and all its findings?')) return;
+  const r = await fetch(`${API}/clients/${selectedClient.id}/scanners/${scannerId}`, {
+    method:'DELETE', headers:{Authorization:'Bearer '+getToken()}
+  });
+  if (r.ok) { toast('Scanner deleted','success'); loadScannersTab(); }
+  else toast('Delete failed','error');
+}
 
 loadClients();
 </script>

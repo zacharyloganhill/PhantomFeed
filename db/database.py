@@ -304,6 +304,53 @@ CREATE TABLE IF NOT EXISTS tabletop_exercises (
 );
 """
 
+CREATE_SCANNER_CONFIGS = """
+CREATE TABLE IF NOT EXISTS scanner_configs (
+    id                  TEXT PRIMARY KEY,
+    client_id           TEXT NOT NULL,
+    scanner_type        TEXT NOT NULL,
+    label               TEXT NOT NULL,
+    host_url            TEXT,
+    api_key_enc         TEXT,
+    secret_key_enc      TEXT,
+    username_enc        TEXT,
+    password_enc        TEXT,
+    extra_config        TEXT DEFAULT '{}',
+    poll_interval_hours INTEGER DEFAULT 6,
+    is_active           INTEGER DEFAULT 1,
+    last_polled         TEXT,
+    last_status         TEXT DEFAULT 'never',
+    created_at          TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
+CREATE_SCAN_FINDINGS = """
+CREATE TABLE IF NOT EXISTS scan_findings (
+    id              TEXT PRIMARY KEY,
+    client_id       TEXT NOT NULL,
+    scanner_id      TEXT NOT NULL,
+    scanner_type    TEXT NOT NULL,
+    asset_id        TEXT,
+    hostname        TEXT,
+    ip_address      TEXT,
+    cve_id          TEXT,
+    plugin_id       TEXT,
+    severity        TEXT NOT NULL DEFAULT 'INFO',
+    cvss            REAL,
+    title           TEXT NOT NULL,
+    description     TEXT,
+    solution        TEXT,
+    first_seen      TEXT,
+    last_seen       TEXT,
+    threat_item_id  TEXT,
+    raw             TEXT,
+    FOREIGN KEY (client_id)     REFERENCES clients(id),
+    FOREIGN KEY (scanner_id)    REFERENCES scanner_configs(id),
+    FOREIGN KEY (threat_item_id) REFERENCES threat_items(id)
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -356,6 +403,8 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_POSTURE_SCORES)
     await _db.execute(CREATE_CMMC_ASSESSMENTS)
     await _db.execute(CREATE_TABLETOP_EXERCISES)
+    await _db.execute(CREATE_SCANNER_CONFIGS)
+    await _db.execute(CREATE_SCAN_FINDINGS)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
     for migration in MIGRATIONS + PHASE3_MIGRATIONS:
@@ -1523,3 +1572,161 @@ async def save_cmmc_assessment(client_id: str, practices: dict) -> dict:
         )
     await db.commit()
     return {"client_id": client_id, "assessed_at": now}
+
+
+# ── Scanner Config CRUD ───────────────────────────────────────────────────────
+
+async def create_scanner_config(client_id: str, scanner_type: str, label: str,
+                                 host_url: str = "", api_key_enc: str = "",
+                                 secret_key_enc: str = "", username_enc: str = "",
+                                 password_enc: str = "", extra_config: dict = None,
+                                 poll_interval_hours: int = 6) -> dict:
+    db = get_db()
+    sid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO scanner_configs
+           (id, client_id, scanner_type, label, host_url, api_key_enc, secret_key_enc,
+            username_enc, password_enc, extra_config, poll_interval_hours, is_active,
+            last_status, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,'never',?)""",
+        (sid, client_id, scanner_type, label, host_url, api_key_enc, secret_key_enc,
+         username_enc, password_enc, json.dumps(extra_config or {}),
+         poll_interval_hours, now),
+    )
+    await db.commit()
+    return await get_scanner_config(sid)
+
+
+async def get_scanner_config(scanner_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM scanner_configs WHERE id = ?", (scanner_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return _scanner_row(row) if row else None
+
+
+async def get_scanner_configs(client_id: str) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM scanner_configs WHERE client_id = ? ORDER BY created_at", (client_id,)
+    ) as cur:
+        rows = await cur.fetchall()
+    return [_scanner_row(r) for r in rows]
+
+
+async def get_all_active_scanner_configs() -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM scanner_configs WHERE is_active = 1"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [_scanner_row(r) for r in rows]
+
+
+async def update_scanner_config(scanner_id: str, **fields) -> Optional[dict]:
+    db = get_db()
+    allowed = {"label", "host_url", "api_key_enc", "secret_key_enc", "username_enc",
+               "password_enc", "extra_config", "poll_interval_hours", "is_active",
+               "last_polled", "last_status"}
+    sets, params = [], []
+    for k, v in fields.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            params.append(json.dumps(v) if k == "extra_config" else v)
+    if not sets:
+        return await get_scanner_config(scanner_id)
+    params.append(scanner_id)
+    await db.execute(f"UPDATE scanner_configs SET {', '.join(sets)} WHERE id = ?", params)
+    await db.commit()
+    return await get_scanner_config(scanner_id)
+
+
+async def delete_scanner_config(scanner_id: str):
+    db = get_db()
+    await db.execute("DELETE FROM scan_findings WHERE scanner_id = ?", (scanner_id,))
+    await db.execute("DELETE FROM scanner_configs WHERE id = ?", (scanner_id,))
+    await db.commit()
+
+
+def _scanner_row(row) -> dict:
+    d = dict(row)
+    try:
+        d["extra_config"] = json.loads(d.get("extra_config") or "{}")
+    except Exception:
+        d["extra_config"] = {}
+    return d
+
+
+# ── Scan Findings CRUD ────────────────────────────────────────────────────────
+
+async def upsert_scan_finding(finding: dict) -> bool:
+    """Upsert by (scanner_id, plugin_id, asset fingerprint). Returns True if new."""
+    db = get_db()
+    key = f"{finding['scanner_id']}:{finding.get('plugin_id','')}:{finding.get('hostname','')}{finding.get('ip_address','')}"
+    fid = hashlib.md5(key.encode()).hexdigest()[:24]
+    now = datetime.utcnow().isoformat()
+    existing = None
+    async with db.execute("SELECT id FROM scan_findings WHERE id = ?", (fid,)) as cur:
+        existing = await cur.fetchone()
+    if existing:
+        await db.execute(
+            "UPDATE scan_findings SET last_seen = ?, severity = ?, cvss = ?, raw = ? WHERE id = ?",
+            (now, finding.get("severity", "INFO"), finding.get("cvss"),
+             json.dumps(finding.get("raw")), fid),
+        )
+        await db.commit()
+        return False
+    await db.execute(
+        """INSERT INTO scan_findings
+           (id, client_id, scanner_id, scanner_type, asset_id, hostname, ip_address,
+            cve_id, plugin_id, severity, cvss, title, description, solution,
+            first_seen, last_seen, threat_item_id, raw)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (fid, finding["client_id"], finding["scanner_id"], finding.get("scanner_type", ""),
+         finding.get("asset_id"), finding.get("hostname"), finding.get("ip_address"),
+         finding.get("cve_id"), finding.get("plugin_id"),
+         finding.get("severity", "INFO"), finding.get("cvss"),
+         finding.get("title", ""), finding.get("description"), finding.get("solution"),
+         now, now, finding.get("threat_item_id"), json.dumps(finding.get("raw"))),
+    )
+    await db.commit()
+    return True
+
+
+async def get_scan_findings(client_id: str, scanner_id: str = None,
+                             severity: str = None, limit: int = 200) -> list[dict]:
+    db = get_db()
+    conditions = ["client_id = ?"]
+    params: list = [client_id]
+    if scanner_id:
+        conditions.append("scanner_id = ?"); params.append(scanner_id)
+    if severity:
+        conditions.append("severity = ?"); params.append(severity)
+    where = " AND ".join(conditions)
+    async with db.execute(
+        f"SELECT * FROM scan_findings WHERE {where} ORDER BY last_seen DESC LIMIT ?",
+        params + [limit],
+    ) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["raw"] = json.loads(d.get("raw") or "null")
+        except Exception:
+            d["raw"] = None
+        result.append(d)
+    return result
+
+
+async def count_scan_findings_by_severity(client_id: str) -> dict:
+    db = get_db()
+    async with db.execute(
+        """SELECT severity, COUNT(*) as cnt FROM scan_findings
+           WHERE client_id = ? GROUP BY severity""",
+        (client_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return {r["severity"]: r["cnt"] for r in rows}
