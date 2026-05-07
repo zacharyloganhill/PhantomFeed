@@ -198,6 +198,18 @@ def start_scheduler():
         misfire_grace_time=300,
     )
 
+    # MISP pull — every 6 hours (if configured)
+    from ingest.misp_connector import pull_misp_events
+    scheduler.add_job(
+        pull_misp_events,
+        trigger=IntervalTrigger(hours=6),
+        id="misp_pull",
+        name="MISP Event Pull",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+
     scheduler.start()
     console.print(
         f"[green]✓ Scheduler started[/] — "
