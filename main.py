@@ -36,6 +36,7 @@ from api.ioc_routes import router as ioc_router
 from api.upload_routes import router as upload_router
 from api.export_routes import router as export_router
 from api.darkweb_routes import router as darkweb_router
+from api.actor_routes import router as actor_router
 
 console = Console()
 
@@ -63,8 +64,14 @@ async def lifespan(app: FastAPI):
     # Start polling scheduler
     scheduler.start_scheduler()
 
+    # Seed threat actors (no-op if already populated)
+    from threat_actors.seed_data import seed_threat_actors
+    actor_count = await seed_threat_actors()
+    if actor_count > 0:
+        console.print(f"[green]Seeded {actor_count} threat actors[/]")
+
     # Do an initial poll of all feeds on startup
-    console.print("[cyan]↓ Running initial feed poll...[/]")
+    console.print("[cyan]Running initial feed poll...[/]")
     asyncio.create_task(initial_poll())
 
     yield
@@ -117,6 +124,7 @@ app.include_router(ioc_router, prefix="/api/v1", tags=["IOC"])
 app.include_router(upload_router, prefix="/api/v1", tags=["Upload"])
 app.include_router(export_router, prefix="/api/v1", tags=["Export"])
 app.include_router(darkweb_router, prefix="/api/v1", tags=["Dark Web"])
+app.include_router(actor_router, prefix="/api/v1", tags=["Threat Actors"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
