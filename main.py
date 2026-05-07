@@ -35,6 +35,7 @@ from api.analytics_routes import router as analytics_router
 from api.ioc_routes import router as ioc_router
 from api.upload_routes import router as upload_router
 from api.export_routes import router as export_router
+from api.darkweb_routes import router as darkweb_router
 
 console = Console()
 
@@ -115,6 +116,7 @@ app.include_router(analytics_router, prefix="/api/v1", tags=["Analytics"])
 app.include_router(ioc_router, prefix="/api/v1", tags=["IOC"])
 app.include_router(upload_router, prefix="/api/v1", tags=["Upload"])
 app.include_router(export_router, prefix="/api/v1", tags=["Export"])
+app.include_router(darkweb_router, prefix="/api/v1", tags=["Dark Web"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)

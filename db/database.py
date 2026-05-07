@@ -5,6 +5,7 @@ Async SQLite via aiosqlite. Single table with full-text search support.
 
 import json
 import hashlib
+import uuid
 import aiosqlite
 from datetime import datetime, timedelta
 from typing import Optional
@@ -180,6 +181,129 @@ CREATE TABLE IF NOT EXISTS upload_log (
 );
 """
 
+CREATE_DARKWEB_ALERTS = """
+CREATE TABLE IF NOT EXISTS darkweb_alerts (
+    id               TEXT PRIMARY KEY,
+    client_id        TEXT NOT NULL,
+    alert_type       TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    matched_term     TEXT,
+    content_preview  TEXT,
+    url              TEXT,
+    detected_at      TEXT,
+    is_acknowledged  INTEGER DEFAULT 0,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
+CREATE_DARKWEB_SEEN = """
+CREATE TABLE IF NOT EXISTS darkweb_seen (
+    id        TEXT PRIMARY KEY,
+    source    TEXT NOT NULL,
+    seen_at   TEXT NOT NULL
+);
+"""
+
+CREATE_THREAT_ACTORS = """
+CREATE TABLE IF NOT EXISTS threat_actors (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    aliases           TEXT DEFAULT '[]',
+    origin            TEXT,
+    sponsor           TEXT,
+    motivation        TEXT,
+    active_since      TEXT,
+    target_industries TEXT DEFAULT '[]',
+    ttps              TEXT DEFAULT '[]',
+    known_malware     TEXT DEFAULT '[]',
+    description       TEXT,
+    recent_activity   TEXT DEFAULT 'Unknown',
+    last_seen         TEXT,
+    ioc_count         INTEGER DEFAULT 0,
+    item_count        INTEGER DEFAULT 0
+);
+"""
+
+CREATE_ACTOR_ITEM_LINKS = """
+CREATE TABLE IF NOT EXISTS actor_item_links (
+    id        TEXT PRIMARY KEY,
+    actor_id  TEXT NOT NULL,
+    item_id   TEXT NOT NULL,
+    linked_at TEXT NOT NULL,
+    FOREIGN KEY (actor_id) REFERENCES threat_actors(id),
+    FOREIGN KEY (item_id)  REFERENCES threat_items(id),
+    UNIQUE(actor_id, item_id)
+);
+"""
+
+CREATE_CLIENT_VENDORS = """
+CREATE TABLE IF NOT EXISTS client_vendors (
+    id           TEXT PRIMARY KEY,
+    client_id    TEXT NOT NULL,
+    vendor_name  TEXT NOT NULL,
+    vendor_type  TEXT,
+    criticality  TEXT DEFAULT 'medium',
+    data_types   TEXT DEFAULT '[]',
+    contact_email TEXT,
+    created_at   TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
+CREATE_VENDOR_EXPOSURES = """
+CREATE TABLE IF NOT EXISTS vendor_exposures (
+    id          TEXT PRIMARY KEY,
+    vendor_id   TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    detected_at TEXT,
+    FOREIGN KEY (vendor_id) REFERENCES client_vendors(id),
+    FOREIGN KEY (item_id)   REFERENCES threat_items(id)
+);
+"""
+
+CREATE_POSTURE_SCORES = """
+CREATE TABLE IF NOT EXISTS posture_scores (
+    id                  TEXT PRIMARY KEY,
+    client_id           TEXT NOT NULL,
+    score               REAL NOT NULL,
+    grade               TEXT NOT NULL,
+    percentile          REAL,
+    sla_component       REAL,
+    mttr_component      REAL,
+    open_crit_component REAL,
+    velocity_component  REAL,
+    calculated_at       TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
+CREATE_CMMC_ASSESSMENTS = """
+CREATE TABLE IF NOT EXISTS cmmc_assessments (
+    id            TEXT PRIMARY KEY,
+    client_id     TEXT NOT NULL,
+    level1_score  REAL,
+    level2_score  REAL,
+    practices_json TEXT DEFAULT '[]',
+    assessed_at   TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
+CREATE_TABLETOP_EXERCISES = """
+CREATE TABLE IF NOT EXISTS tabletop_exercises (
+    id            TEXT PRIMARY KEY,
+    client_id     TEXT NOT NULL,
+    title         TEXT,
+    scenario_type TEXT,
+    generated_at  TEXT,
+    conducted_at  TEXT,
+    participants  INTEGER,
+    scenario_json TEXT,
+    debrief_notes TEXT,
+    FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -187,6 +311,16 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_published  ON threat_items(published_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_fetched    ON threat_items(fetched_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_is_new     ON threat_items(is_new);",
+]
+
+PHASE3_MIGRATIONS = [
+    "ALTER TABLE clients ADD COLUMN industry TEXT;",
+    "ALTER TABLE clients ADD COLUMN logo_path TEXT;",
+    "ALTER TABLE clients ADD COLUMN brand_color TEXT;",
+    "ALTER TABLE clients ADD COLUMN cmmc_assessment_date TEXT;",
+    "ALTER TABLE threat_items ADD COLUMN expected_loss REAL;",
+    "ALTER TABLE threat_items ADD COLUMN remediation_cost REAL;",
+    "ALTER TABLE threat_items ADD COLUMN epss_score REAL;",
 ]
 
 _db: Optional[aiosqlite.Connection] = None
@@ -209,10 +343,18 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_WEBHOOK_CONFIGS)
     await _db.execute(CREATE_WEBHOOK_ERRORS)
     await _db.execute(CREATE_UPLOAD_LOG)
+    await _db.execute(CREATE_DARKWEB_ALERTS)
+    await _db.execute(CREATE_DARKWEB_SEEN)
+    await _db.execute(CREATE_THREAT_ACTORS)
+    await _db.execute(CREATE_ACTOR_ITEM_LINKS)
+    await _db.execute(CREATE_CLIENT_VENDORS)
+    await _db.execute(CREATE_VENDOR_EXPOSURES)
+    await _db.execute(CREATE_POSTURE_SCORES)
+    await _db.execute(CREATE_CMMC_ASSESSMENTS)
+    await _db.execute(CREATE_TABLETOP_EXERCISES)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
-    # Additive migrations — silently ignore if column already exists
-    for migration in MIGRATIONS:
+    for migration in MIGRATIONS + PHASE3_MIGRATIONS:
         try:
             await _db.execute(migration)
         except Exception:
@@ -857,3 +999,438 @@ def _row_to_dict(row) -> dict:
     d["is_new"] = bool(d.get("is_new"))
     d["is_read"] = bool(d.get("is_read"))
     return d
+
+
+# ── Dark Web Alerts CRUD ───────────────────────────────────────────────────────
+
+async def create_darkweb_alert(client_id: str, alert_type: str, source: str,
+                                matched_term: str = "", content_preview: str = "",
+                                url: str = "") -> dict:
+    db = get_db()
+    alert_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO darkweb_alerts
+           (id, client_id, alert_type, source, matched_term, content_preview, url, detected_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (alert_id, client_id, alert_type, source, matched_term, content_preview[:500], url, now),
+    )
+    await db.commit()
+    return {"id": alert_id, "client_id": client_id, "alert_type": alert_type,
+            "source": source, "matched_term": matched_term,
+            "content_preview": content_preview[:500], "url": url,
+            "detected_at": now, "is_acknowledged": 0}
+
+
+async def get_darkweb_alerts(client_id: str, limit: int = 100,
+                              unacknowledged_only: bool = False) -> list[dict]:
+    db = get_db()
+    if unacknowledged_only:
+        q = "SELECT * FROM darkweb_alerts WHERE client_id = ? AND is_acknowledged = 0 ORDER BY detected_at DESC LIMIT ?"
+    else:
+        q = "SELECT * FROM darkweb_alerts WHERE client_id = ? ORDER BY detected_at DESC LIMIT ?"
+    async with db.execute(q, (client_id, limit)) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def acknowledge_darkweb_alert(alert_id: str) -> bool:
+    db = get_db()
+    await db.execute("UPDATE darkweb_alerts SET is_acknowledged = 1 WHERE id = ?", (alert_id,))
+    await db.commit()
+    return True
+
+
+async def count_unacknowledged_alerts(client_id: str) -> int:
+    db = get_db()
+    async with db.execute(
+        "SELECT COUNT(*) FROM darkweb_alerts WHERE client_id = ? AND is_acknowledged = 0",
+        (client_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def is_darkweb_seen(source: str, item_id: str) -> bool:
+    db = get_db()
+    key = f"{source}:{item_id}"
+    async with db.execute("SELECT id FROM darkweb_seen WHERE id = ?", (key,)) as cur:
+        return bool(await cur.fetchone())
+
+
+async def mark_darkweb_seen(source: str, item_id: str):
+    db = get_db()
+    key = f"{source}:{item_id}"
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        "INSERT OR IGNORE INTO darkweb_seen (id, source, seen_at) VALUES (?,?,?)",
+        (key, source, now),
+    )
+    await db.commit()
+
+
+# ── Threat Actor CRUD ─────────────────────────────────────────────────────────
+
+def _actor_row(row) -> dict:
+    d = dict(row)
+    for f in ("aliases", "target_industries", "ttps", "known_malware"):
+        if d.get(f):
+            try:
+                d[f] = json.loads(d[f])
+            except Exception:
+                d[f] = []
+        else:
+            d[f] = []
+    return d
+
+
+async def upsert_threat_actor(actor: dict) -> bool:
+    db = get_db()
+    async with db.execute("SELECT id FROM threat_actors WHERE id = ?", (actor["id"],)) as cur:
+        existing = await cur.fetchone()
+    now = datetime.utcnow().isoformat()
+    params = (
+        actor["id"], actor.get("name", ""), json.dumps(actor.get("aliases", [])),
+        actor.get("origin", ""), actor.get("sponsor", ""), actor.get("motivation", ""),
+        actor.get("active_since", ""),
+        json.dumps(actor.get("target_industries", [])),
+        json.dumps(actor.get("ttps", [])),
+        json.dumps(actor.get("known_malware", [])),
+        actor.get("description", ""), actor.get("recent_activity", "Unknown"),
+        now,
+    )
+    if existing:
+        await db.execute(
+            """UPDATE threat_actors SET name=?,aliases=?,origin=?,sponsor=?,motivation=?,
+               active_since=?,target_industries=?,ttps=?,known_malware=?,description=?,
+               recent_activity=?,last_seen=? WHERE id=?""",
+            params[1:] + (actor["id"],),
+        )
+    else:
+        await db.execute(
+            """INSERT INTO threat_actors
+               (id,name,aliases,origin,sponsor,motivation,active_since,
+                target_industries,ttps,known_malware,description,recent_activity,last_seen)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            params,
+        )
+    await db.commit()
+    return not bool(existing)
+
+
+async def get_threat_actors(origin: str = None, motivation: str = None,
+                             active_only: bool = False) -> list[dict]:
+    db = get_db()
+    conditions, params = [], []
+    if origin:
+        conditions.append("origin = ?"); params.append(origin)
+    if motivation:
+        conditions.append("motivation = ?"); params.append(motivation)
+    if active_only:
+        conditions.append("recent_activity = 'Active'")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with db.execute(
+        f"SELECT * FROM threat_actors {where} ORDER BY name", params
+    ) as cur:
+        rows = await cur.fetchall()
+    return [_actor_row(r) for r in rows]
+
+
+async def get_threat_actor(actor_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute("SELECT * FROM threat_actors WHERE id = ?", (actor_id,)) as cur:
+        row = await cur.fetchone()
+    return _actor_row(row) if row else None
+
+
+async def link_actor_to_item(actor_id: str, item_id: str):
+    db = get_db()
+    link_id = hashlib.md5(f"{actor_id}:{item_id}".encode()).hexdigest()[:16]
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        "INSERT OR IGNORE INTO actor_item_links (id, actor_id, item_id, linked_at) VALUES (?,?,?,?)",
+        (link_id, actor_id, item_id, now),
+    )
+    await db.execute(
+        "UPDATE threat_actors SET item_count = item_count + 1 WHERE id = ? AND NOT EXISTS "
+        "(SELECT 1 FROM actor_item_links WHERE actor_id=? AND item_id=?)",
+        (actor_id, actor_id, item_id),
+    )
+    await db.commit()
+
+
+async def get_actor_items(actor_id: str, limit: int = 50) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        """SELECT ti.* FROM threat_items ti
+           JOIN actor_item_links al ON ti.id = al.item_id
+           WHERE al.actor_id = ?
+           ORDER BY al.linked_at DESC LIMIT ?""",
+        (actor_id, limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+# ── Client Vendor CRUD ────────────────────────────────────────────────────────
+
+async def create_vendor(client_id: str, vendor_name: str, vendor_type: str = "",
+                         criticality: str = "medium", data_types: list = None,
+                         contact_email: str = "") -> dict:
+    db = get_db()
+    vid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO client_vendors
+           (id, client_id, vendor_name, vendor_type, criticality, data_types, contact_email, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (vid, client_id, vendor_name, vendor_type, criticality,
+         json.dumps(data_types or []), contact_email, now),
+    )
+    await db.commit()
+    return {"id": vid, "client_id": client_id, "vendor_name": vendor_name,
+            "vendor_type": vendor_type, "criticality": criticality,
+            "data_types": data_types or [], "contact_email": contact_email, "created_at": now}
+
+
+async def get_vendors(client_id: str) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM client_vendors WHERE client_id = ? ORDER BY vendor_name", (client_id,)
+    ) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["data_types"] = json.loads(d.get("data_types") or "[]")
+        except Exception:
+            d["data_types"] = []
+        result.append(d)
+    return result
+
+
+async def delete_vendor(vendor_id: str):
+    db = get_db()
+    await db.execute("DELETE FROM vendor_exposures WHERE vendor_id = ?", (vendor_id,))
+    await db.execute("DELETE FROM client_vendors WHERE id = ?", (vendor_id,))
+    await db.commit()
+
+
+async def get_vendor_exposure_count(vendor_id: str) -> int:
+    db = get_db()
+    async with db.execute(
+        "SELECT COUNT(*) FROM vendor_exposures WHERE vendor_id = ?", (vendor_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def add_vendor_exposure(vendor_id: str, item_id: str):
+    db = get_db()
+    eid = hashlib.md5(f"{vendor_id}:{item_id}".encode()).hexdigest()[:16]
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        "INSERT OR IGNORE INTO vendor_exposures (id, vendor_id, item_id, detected_at) VALUES (?,?,?,?)",
+        (eid, vendor_id, item_id, now),
+    )
+    await db.commit()
+
+
+# ── Posture Score CRUD ────────────────────────────────────────────────────────
+
+async def save_posture_score(client_id: str, score: float, grade: str,
+                              percentile: float = None, sla_component: float = 0,
+                              mttr_component: float = 0, open_crit_component: float = 0,
+                              velocity_component: float = 0) -> dict:
+    db = get_db()
+    sid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO posture_scores
+           (id, client_id, score, grade, percentile, sla_component, mttr_component,
+            open_crit_component, velocity_component, calculated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (sid, client_id, score, grade, percentile, sla_component,
+         mttr_component, open_crit_component, velocity_component, now),
+    )
+    await db.commit()
+    return {"id": sid, "client_id": client_id, "score": score, "grade": grade,
+            "percentile": percentile, "calculated_at": now}
+
+
+async def get_latest_posture_score(client_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM posture_scores WHERE client_id = ? ORDER BY calculated_at DESC LIMIT 1",
+        (client_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_posture_history(client_id: str, limit: int = 30) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM posture_scores WHERE client_id = ? ORDER BY calculated_at DESC LIMIT ?",
+        (client_id, limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Tabletop Exercise CRUD ────────────────────────────────────────────────────
+
+async def create_tabletop(client_id: str, title: str, scenario_type: str,
+                           scenario_json: dict) -> dict:
+    db = get_db()
+    ex_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO tabletop_exercises
+           (id, client_id, title, scenario_type, generated_at, scenario_json)
+           VALUES (?,?,?,?,?,?)""",
+        (ex_id, client_id, title, scenario_type, now, json.dumps(scenario_json)),
+    )
+    await db.commit()
+    return {"id": ex_id, "client_id": client_id, "title": title,
+            "scenario_type": scenario_type, "generated_at": now}
+
+
+async def get_tabletops(client_id: str) -> list[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT id,client_id,title,scenario_type,generated_at,conducted_at,participants "
+        "FROM tabletop_exercises WHERE client_id = ? ORDER BY generated_at DESC",
+        (client_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_tabletop(ex_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM tabletop_exercises WHERE id = ?", (ex_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("scenario_json"):
+        try:
+            d["scenario_json"] = json.loads(d["scenario_json"])
+        except Exception:
+            pass
+    return d
+
+
+async def update_tabletop(ex_id: str, **fields) -> Optional[dict]:
+    db = get_db()
+    allowed = {"conducted_at", "participants", "debrief_notes"}
+    sets, params = [], []
+    for k, v in fields.items():
+        if k in allowed:
+            sets.append(f"{k} = ?"); params.append(v)
+    if not sets:
+        return await get_tabletop(ex_id)
+    params.append(ex_id)
+    await db.execute(f"UPDATE tabletop_exercises SET {', '.join(sets)} WHERE id = ?", params)
+    await db.commit()
+    return await get_tabletop(ex_id)
+
+
+# ── Update client with extended fields ───────────────────────────────────────
+
+async def update_client_extended(client_id: str, **fields) -> Optional[dict]:
+    db = get_db()
+    allowed = {"name", "contact_email", "stack_profile", "industry",
+               "logo_path", "brand_color", "cmmc_assessment_date"}
+    sets, params = [], []
+    for k, v in fields.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            params.append(json.dumps(v) if k == "stack_profile" else v)
+    if not sets:
+        return await get_client(client_id)
+    params.append(client_id)
+    await db.execute(f"UPDATE clients SET {', '.join(sets)} WHERE id = ?", params)
+    await db.commit()
+    return await get_client(client_id)
+
+
+# ── Notifications aggregator ──────────────────────────────────────────────────
+
+async def get_notifications(client_id: str = None, limit: int = 10) -> list[dict]:
+    """Aggregate recent alerts across dark web, SLA, and critical items."""
+    db = get_db()
+    notifications = []
+    now = datetime.utcnow().isoformat()
+    cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+
+    # Dark web alerts (unacknowledged)
+    if client_id:
+        q = ("SELECT id, client_id, alert_type, source, matched_term, detected_at "
+             "FROM darkweb_alerts WHERE client_id = ? AND is_acknowledged = 0 "
+             "ORDER BY detected_at DESC LIMIT ?")
+        args = (client_id, limit)
+    else:
+        q = ("SELECT id, client_id, alert_type, source, matched_term, detected_at "
+             "FROM darkweb_alerts WHERE is_acknowledged = 0 "
+             "ORDER BY detected_at DESC LIMIT ?")
+        args = (limit,)
+    async with db.execute(q, args) as cur:
+        rows = await cur.fetchall()
+    for r in rows:
+        d = dict(r)
+        notifications.append({
+            "type": "darkweb",
+            "severity": "HIGH",
+            "title": f"Dark web alert: {d['alert_type']} on {d['source']}",
+            "detail": d.get("matched_term", ""),
+            "timestamp": d["detected_at"],
+            "client_id": d["client_id"],
+            "ref_id": d["id"],
+        })
+
+    # New CRITICAL items in last 24h
+    crit_q = ("SELECT id, title, feed_label, fetched_at FROM threat_items "
+              "WHERE severity = 'CRITICAL' AND fetched_at > ? ORDER BY fetched_at DESC LIMIT ?")
+    async with db.execute(crit_q, (cutoff_24h, limit)) as cur:
+        rows = await cur.fetchall()
+    for r in rows:
+        d = dict(r)
+        notifications.append({
+            "type": "critical_item",
+            "severity": "CRITICAL",
+            "title": f"New CRITICAL: {d['title'][:80]}",
+            "detail": d["feed_label"],
+            "timestamp": d["fetched_at"],
+            "client_id": client_id,
+            "ref_id": d["id"],
+        })
+
+    # SLA overdue count
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    overdue_q = "SELECT COUNT(*) FROM remediation_items WHERE status='open' AND due_date < ?"
+    if client_id:
+        overdue_q += " AND client_id = ?"
+        async with db.execute(overdue_q, (today, client_id)) as cur:
+            row = await cur.fetchone()
+    else:
+        async with db.execute(overdue_q, (today,)) as cur:
+            row = await cur.fetchone()
+    overdue_count = row[0] if row else 0
+    if overdue_count > 0:
+        notifications.append({
+            "type": "sla_overdue",
+            "severity": "HIGH",
+            "title": f"{overdue_count} remediation items are past SLA",
+            "detail": "Click to view remediation tracker",
+            "timestamp": now,
+            "client_id": client_id,
+            "ref_id": None,
+        })
+
+    notifications.sort(key=lambda x: x["timestamp"], reverse=True)
+    return notifications[:limit]

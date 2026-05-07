@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PhantomFeed — Client Dashboard</title>
+<style>
+:root{--bg:#0d0f14;--bg2:#12151c;--bg3:#1a1e27;--bg4:#222736;--border:#2a2f3e;--text:#e2e8f0;--muted:#64748b;--teal:#00d4aa;--red:#ff4757;--amber:#ffa502;--blue:#00b4d8;--purple:#a29bfe;--green:#2ed573;--mono:'JetBrains Mono',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 20px;height:48px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.topbar-brand{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--teal);font-weight:600;text-decoration:none}
+.topbar-client{font-size:11px;color:var(--muted);margin-left:4px}
+.topbar-nav{display:flex;gap:2px;margin-left:auto}
+.topbar-nav a{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:4px;transition:.15s}
+.topbar-nav a:hover,.topbar-nav a.active{color:var(--teal);background:rgba(0,212,170,.08)}
+.posture-badge{font-family:var(--mono);font-size:9px;padding:4px 10px;border-radius:4px;background:var(--bg4);border:1px solid var(--border);cursor:default}
+.posture-score{color:var(--teal);font-weight:700}
+.exposure-badge{font-family:var(--mono);font-size:9px;padding:4px 10px;border-radius:4px;background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--red)}
+.notif-btn{position:relative;background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;border-radius:4px;font-size:15px;transition:.15s}
+.notif-btn:hover{color:var(--text);background:var(--bg4)}
+.notif-badge{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:8px;min-width:14px;height:14px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:var(--mono)}
+.layout{display:flex;height:calc(100vh - 48px)}
+.sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar-section{padding:12px 0}
+.sidebar-label{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;color:var(--muted);padding:0 16px 6px;text-transform:uppercase}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:7px 16px;cursor:pointer;transition:.15s;font-size:12px;color:var(--muted)}
+.sidebar-item:hover{background:var(--bg3);color:var(--text)}
+.sidebar-item.active{background:rgba(0,212,170,.08);color:var(--teal);border-right:2px solid var(--teal)}
+.sidebar-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot-critical{background:var(--red)}
+.dot-high{background:var(--amber)}
+.dot-darkweb{background:var(--purple)}
+.badge{display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:8px;min-width:18px;height:16px;padding:0 4px;border-radius:8px;margin-left:auto}
+.badge-red{background:rgba(255,71,87,.2);color:var(--red);border:1px solid rgba(255,71,87,.3)}
+.badge-amber{background:rgba(255,165,2,.15);color:var(--amber)}
+.badge-purple{background:rgba(162,155,254,.15);color:var(--purple)}
+.badge-teal{background:rgba(0,212,170,.12);color:var(--teal)}
+.main{flex:1;overflow-y:auto}
+.tab-bar{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);padding:0 20px}
+.tab-btn{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:12px 14px;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;transition:.15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--teal);border-bottom-color:var(--teal)}
+.tab-pane{display:none;padding:20px}
+.tab-pane.active{display:block}
+.section-header{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.section-header::after{content:'';flex:1;height:1px;background:var(--border)}
+/* Cards & widgets */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:4px}
+.stat-label{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:var(--muted);text-transform:uppercase}
+.stat-value{font-size:22px;font-weight:700;font-family:var(--mono);color:var(--text)}
+.stat-sub{font-size:10px;color:var(--muted)}
+.stat-critical .stat-value{color:var(--red)}
+.stat-high .stat-value{color:var(--amber)}
+.stat-teal .stat-value{color:var(--teal)}
+/* Posture gauge */
+.posture-gauge{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:24px}
+.gauge-circle{width:80px;height:80px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);flex-shrink:0;border:3px solid var(--teal)}
+.gauge-score{font-size:22px;font-weight:700;color:var(--teal)}
+.gauge-grade{font-size:11px;color:var(--teal)}
+.gauge-info{flex:1}
+.gauge-title{font-weight:600;margin-bottom:4px}
+.gauge-sub{font-size:11px;color:var(--muted);line-height:1.5}
+.gauge-bar{height:4px;background:var(--bg4);border-radius:2px;margin-top:8px;overflow:hidden}
+.gauge-bar-fill{height:100%;background:var(--teal);border-radius:2px;transition:width .5s}
+/* Items list */
+.item-list{display:flex;flex-direction:column;gap:6px}
+.item-row{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;transition:.15s}
+.item-row:hover{border-color:var(--teal);background:var(--bg3)}
+.sev-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.sev-CRITICAL{background:var(--red)}
+.sev-HIGH{background:var(--amber)}
+.sev-MEDIUM{background:var(--blue)}
+.sev-LOW{background:var(--muted)}
+.item-body{flex:1;min-width:0}
+.item-title{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.item-meta{font-size:10px;color:var(--muted)}
+.item-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.pill{font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);color:var(--muted)}
+/* Dark web alerts */
+.dw-alert{background:var(--bg2);border:1px solid rgba(162,155,254,.3);border-radius:6px;padding:12px 14px;margin-bottom:8px}
+.dw-alert.acknowledged{opacity:.5;border-color:var(--border)}
+.dw-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.dw-source{font-family:var(--mono);font-size:8px;padding:2px 8px;border-radius:3px;background:rgba(162,155,254,.15);color:var(--purple)}
+.dw-type{font-family:var(--mono);font-size:8px;color:var(--muted)}
+.dw-term{font-size:11px;font-weight:600;color:var(--text)}
+.dw-preview{font-size:10px;color:var(--muted);margin:4px 0;font-family:var(--mono)}
+.dw-actions{display:flex;align-items:center;gap:8px;margin-top:6px}
+.dw-url{font-size:9px;color:var(--teal);text-decoration:none;font-family:var(--mono)}
+.dw-url:hover{text-decoration:underline}
+.btn{font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:5px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg4);color:var(--text);cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--teal);color:var(--teal)}
+.btn-sm{font-size:8px;padding:3px 8px}
+.btn-primary{background:var(--teal);color:#000;border-color:var(--teal)}
+.btn-primary:hover{background:#00b896;border-color:#00b896;color:#000}
+.btn-danger{background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.3);color:var(--red)}
+.empty-state{text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:11px}
+/* Exposure & ROI */
+.exposure-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.exposure-row:last-child{border:none}
+.exposure-item{flex:1;font-size:11px;font-weight:500}
+.exposure-meta{font-size:10px;color:var(--muted)}
+.exposure-loss{font-family:var(--mono);font-size:11px;color:var(--red)}
+/* Supply chain graph placeholder */
+.graph-placeholder{background:var(--bg3);border:1px dashed var(--border);border-radius:8px;height:300px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);font-family:var(--mono);font-size:10px}
+/* Toast */
+#toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:11px;min-width:220px;animation:fadeIn .2s ease}
+.toast.success{border-color:var(--teal);color:var(--teal)}
+.toast.error{border-color:var(--red);color:var(--red)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* Notification dropdown */
+.notif-dropdown{position:absolute;top:44px;right:16px;width:360px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:200;display:none}
+.notif-dropdown.open{display:block}
+.notif-header{padding:10px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.notif-item{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s}
+.notif-item:hover{background:var(--bg3)}
+.notif-item:last-child{border:none}
+.notif-type{font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:3px}
+.notif-title{font-size:11px;font-weight:500}
+.notif-time{font-size:9px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a class="topbar-brand" href="/">PHANTOM<span style="color:#fff">FEED</span></a>
+  <span class="topbar-client" id="clientName">Loading...</span>
+  <div class="topbar-nav">
+    <a href="dashboard.html">Feed</a>
+    <a href="analytics.html">Analytics</a>
+    <a href="actors.html">Actors</a>
+    <a href="cmmc.html">CMMC</a>
+    <a href="supplychain.html">Supply Chain</a>
+    <a href="upload.html">Upload</a>
+    <a href="admin.html">Admin</a>
+  </div>
+  <div id="postureWidget" class="posture-badge" title="Security Posture Score" style="display:none">
+    Posture: <span class="posture-score" id="postureTopbar">--</span>
+  </div>
+  <div id="exposureWidget" class="exposure-badge" title="Total estimated financial exposure" style="display:none">
+    Risk: <span id="exposureTopbar">$0</span>
+  </div>
+  <div style="position:relative">
+    <button class="notif-btn" onclick="toggleNotif()" id="notifBtn">
+      &#9432;
+      <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+    </button>
+    <div class="notif-dropdown" id="notifDropdown">
+      <div class="notif-header">Notifications</div>
+      <div id="notifList"><div class="empty-state" style="padding:20px">No notifications</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Severity</div>
+      <div class="sidebar-item active" onclick="filterSev('')">
+        <span class="sidebar-dot" style="background:var(--teal)"></span> All Items
+        <span class="badge badge-teal" id="totalBadge">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterSev('CRITICAL')">
+        <span class="sidebar-dot dot-critical"></span> Critical
+        <span class="badge badge-red" id="critBadge">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterSev('HIGH')">
+        <span class="sidebar-dot dot-high"></span> High
+        <span class="badge badge-amber" id="highBadge">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterSev('MEDIUM')">
+        <span class="sidebar-dot" style="background:var(--blue)"></span> Medium
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Category</div>
+      <div class="sidebar-item" onclick="filterCat('cve')">CVE / Vuln</div>
+      <div class="sidebar-item" onclick="filterCat('kev')">CISA KEV</div>
+      <div class="sidebar-item" onclick="filterCat('darkweb')">
+        Dark Web
+        <span class="badge badge-purple" id="dwBadge" style="display:none">0</span>
+      </div>
+      <div class="sidebar-item" onclick="filterCat('supply')">Supply Chain</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Actions</div>
+      <div class="sidebar-item" onclick="downloadDeck()">Generate Brief</div>
+      <div class="sidebar-item" onclick="openCmmc()">CMMC Assessment</div>
+      <div class="sidebar-item" onclick="openTabletop()">Tabletop Exercise</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('feed')">Feed</button>
+      <button class="tab-btn" onclick="switchTab('remediation')">Remediation</button>
+      <button class="tab-btn" onclick="switchTab('darkweb')">Dark Web <span id="dwTabBadge"></span></button>
+      <button class="tab-btn" onclick="switchTab('tabletop')">Tabletop</button>
+      <button class="tab-btn" onclick="switchTab('supplychain')">Supply Chain</button>
+      <button class="tab-btn" onclick="switchTab('riskportfolio')">Risk Portfolio</button>
+    </div>
+
+    <!-- FEED TAB -->
+    <div class="tab-pane active" id="tab-feed">
+      <div class="section-header">Posture Overview</div>
+      <div id="postureGauge" class="posture-gauge" style="display:none">
+        <div class="gauge-circle" id="gaugeCircle">
+          <span class="gauge-score" id="gaugeScore">--</span>
+          <span class="gauge-grade" id="gaugeGrade">?</span>
+        </div>
+        <div class="gauge-info">
+          <div class="gauge-title" id="gaugeTitle">Security Posture Score</div>
+          <div class="gauge-sub" id="gaugeSub">Calculating...</div>
+          <div class="gauge-bar"><div class="gauge-bar-fill" id="gaugeBarFill" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="stat-row" id="statRow">
+        <div class="stat-card stat-critical">
+          <div class="stat-label">Critical Items</div>
+          <div class="stat-value" id="statCritical">0</div>
+          <div class="stat-sub">Active vulnerabilities</div>
+        </div>
+        <div class="stat-card stat-high">
+          <div class="stat-label">High Items</div>
+          <div class="stat-value" id="statHigh">0</div>
+          <div class="stat-sub">Needs attention</div>
+        </div>
+        <div class="stat-card stat-teal">
+          <div class="stat-label">KEV Items</div>
+          <div class="stat-value" id="statKev">0</div>
+          <div class="stat-sub">Actively exploited</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Assets</div>
+          <div class="stat-value" id="statAssets">0</div>
+          <div class="stat-sub">Tracked in environment</div>
+        </div>
+      </div>
+
+      <div class="section-header">Recent Threat Items</div>
+      <div id="feedItems" class="item-list"></div>
+    </div>
+
+    <!-- REMEDIATION TAB -->
+    <div class="tab-pane" id="tab-remediation">
+      <div class="section-header">Open Remediations</div>
+      <div id="remItems" class="item-list"></div>
+    </div>
+
+    <!-- DARK WEB TAB -->
+    <div class="tab-pane" id="tab-darkweb">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <h3 style="font-size:13px;font-weight:600">Dark Web Alerts</h3>
+        <button class="btn" onclick="triggerDarkwebScan()">Scan Now</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-left:auto">
+          <input type="checkbox" id="dwUnackOnly" onchange="loadDarkwebAlerts()"> Unacknowledged only
+        </label>
+      </div>
+      <div id="dwAlerts"></div>
+    </div>
+
+    <!-- TABLETOP TAB -->
+    <div class="tab-pane" id="tab-tabletop">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <h3 style="font-size:13px;font-weight:600">Tabletop Exercises</h3>
+        <button class="btn btn-primary" onclick="generateTabletop()">Generate Scenario</button>
+      </div>
+      <div id="tabletopList" class="item-list"></div>
+    </div>
+
+    <!-- SUPPLY CHAIN TAB -->
+    <div class="tab-pane" id="tab-supplychain">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <h3 style="font-size:13px;font-weight:600">Vendor Risk Graph</h3>
+        <button class="btn" onclick="addVendorForm()">Add Vendor</button>
+        <a id="scReportLink" href="#" class="btn" onclick="downloadScReport(event)">Export Report</a>
+      </div>
+      <div id="vendorGraph" class="graph-placeholder">
+        <div style="font-size:20px">&#9681;</div>
+        <div>Supply Chain Risk Graph</div>
+        <div style="color:var(--border)">D3.js visualization — Add vendors to begin</div>
+        <button class="btn" style="margin-top:8px" onclick="loadSupplyChain()">Load Graph</button>
+      </div>
+      <div id="vendorList" style="margin-top:16px"></div>
+    </div>
+
+    <!-- RISK PORTFOLIO TAB -->
+    <div class="tab-pane" id="tab-riskportfolio">
+      <div class="section-header">Cyber Risk Portfolio</div>
+      <div id="riskPortfolioContent">
+        <div class="stat-row">
+          <div class="stat-card stat-critical">
+            <div class="stat-label">Total Estimated Exposure</div>
+            <div class="stat-value" id="totalExposure">$0</div>
+            <div class="stat-sub">Probability-weighted breach cost</div>
+          </div>
+          <div class="stat-card stat-high">
+            <div class="stat-label">Remediation Cost</div>
+            <div class="stat-value" id="totalRemCost">$0</div>
+            <div class="stat-sub">To close all open items</div>
+          </div>
+          <div class="stat-card stat-teal">
+            <div class="stat-label">Portfolio ROI</div>
+            <div class="stat-value" id="portfolioRoi">0x</div>
+            <div class="stat-sub">Return on remediation</div>
+          </div>
+        </div>
+        <div class="section-header">Top Items by Financial Risk</div>
+        <div id="riskItemsList" class="item-list"></div>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn btn-primary" onclick="downloadRoiReport()">Generate Board Report</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .main -->
+</div><!-- .layout -->
+
+<div id="toast-container"></div>
+
+<script>
+const API = '/api/v1';
+const params = new URLSearchParams(location.search);
+const clientId = params.get('client_id') || '';
+let token = localStorage.getItem('pf_token') || '';
+let currentSevFilter = '';
+let currentCatFilter = '';
+let allItems = [];
+
+if (!clientId) {
+  document.getElementById('clientName').textContent = 'No client selected';
+}
+
+function hdr() {
+  return token ? { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { headers: hdr(), ...opts });
+  if (r.status === 401) { toast('Session expired', 'error'); return null; }
+  if (!r.ok) return null;
+  return r.json();
+}
+
+function toast(msg, type = 'info', dur = 3000) {
+  const d = document.createElement('div');
+  d.className = `toast ${type}`;
+  d.textContent = msg;
+  document.getElementById('toast-container').appendChild(d);
+  setTimeout(() => d.remove(), dur);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'darkweb') loadDarkwebAlerts();
+  if (name === 'tabletop') loadTabletops();
+  if (name === 'supplychain') loadSupplyChain();
+  if (name === 'riskportfolio') loadRiskPortfolio();
+  if (name === 'remediation') loadRemediations();
+}
+
+function filterSev(sev) {
+  currentSevFilter = sev;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  renderItems(allItems);
+}
+
+function filterCat(cat) {
+  currentCatFilter = currentCatFilter === cat ? '' : cat;
+  renderItems(allItems);
+}
+
+function sevColor(s) {
+  return { CRITICAL: 'var(--red)', HIGH: 'var(--amber)', MEDIUM: 'var(--blue)', LOW: 'var(--muted)' }[s] || 'var(--muted)';
+}
+
+function fmtMoney(n) {
+  if (!n) return '$0';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+}
+
+function timeAgo(dt) {
+  if (!dt) return '';
+  const d = new Date(dt + 'Z');
+  const diff = Date.now() - d.getTime();
+  const h = Math.floor(diff / 3.6e6);
+  if (h < 1) return 'just now';
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+// ── FEED TAB ──────────────────────────────────────────────────────────────────
+
+async function loadFeed() {
+  if (!clientId) return;
+  const data = await api(`/items?client_id=${clientId}&limit=100&sort=risk`);
+  if (!data) return;
+  allItems = data.items || data || [];
+  renderItems(allItems);
+
+  // Update sidebar badges
+  const crit = allItems.filter(i => i.severity === 'CRITICAL').length;
+  const high = allItems.filter(i => i.severity === 'HIGH').length;
+  document.getElementById('critBadge').textContent = crit;
+  document.getElementById('highBadge').textContent = high;
+  document.getElementById('totalBadge').textContent = allItems.length;
+
+  // Stats
+  const kev = allItems.filter(i => i.category === 'kev').length;
+  document.getElementById('statCritical').textContent = crit;
+  document.getElementById('statHigh').textContent = high;
+  document.getElementById('statKev').textContent = kev;
+}
+
+function renderItems(items) {
+  let filtered = items;
+  if (currentSevFilter) filtered = filtered.filter(i => i.severity === currentSevFilter);
+  if (currentCatFilter) filtered = filtered.filter(i => i.category === currentCatFilter);
+  const el = document.getElementById('feedItems');
+  if (!filtered.length) { el.innerHTML = '<div class="empty-state">No items match current filters</div>'; return; }
+  el.innerHTML = filtered.slice(0, 50).map(item => `
+    <div class="item-row" onclick="window.open('dashboard.html?item=${item.id}','_blank')">
+      <div class="sev-dot sev-${item.severity}"></div>
+      <div class="item-body">
+        <div class="item-title">${item.title}</div>
+        <div class="item-meta">${item.feed_label} &middot; ${timeAgo(item.published_at)}</div>
+        <div class="item-badges">
+          <span class="pill" style="color:${sevColor(item.severity)}">${item.severity}</span>
+          <span class="pill">${item.category}</span>
+          ${(item.cve_ids || []).slice(0, 2).map(c => `<span class="pill">${c}</span>`).join('')}
+        </div>
+      </div>
+      ${item.risk_score ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${item.risk_score.toFixed(2)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ── POSTURE ───────────────────────────────────────────────────────────────────
+
+async function loadPosture() {
+  if (!clientId) return;
+  const data = await api(`/clients/${clientId}/posture`);
+  if (!data) return;
+  const score = data.score || 0;
+  const grade = data.grade || '?';
+  const pct = data.percentile || null;
+  document.getElementById('postureGauge').style.display = 'flex';
+  document.getElementById('gaugeScore').textContent = Math.round(score);
+  document.getElementById('gaugeGrade').textContent = grade;
+  document.getElementById('gaugeBarFill').style.width = score + '%';
+  const gradeColor = { A: 'var(--teal)', B: 'var(--green)', C: 'var(--amber)', D: 'var(--red)', F: 'var(--red)' }[grade] || 'var(--muted)';
+  document.getElementById('gaugeCircle').style.borderColor = gradeColor;
+  document.getElementById('gaugeScore').style.color = gradeColor;
+  document.getElementById('gaugeGrade').style.color = gradeColor;
+  document.getElementById('gaugeTitle').textContent = `Security Posture: Grade ${grade}`;
+  const industry = data.industry || 'your industry';
+  document.getElementById('gaugeSub').textContent = pct
+    ? `Better than ${pct.toFixed(0)}% of ${industry} organizations`
+    : `Score based on SLA compliance, MTTR, open criticals, and remediation velocity`;
+
+  // Topbar widget
+  document.getElementById('postureWidget').style.display = 'flex';
+  document.getElementById('postureTopbar').textContent = Math.round(score) + ' ' + grade;
+
+  // Sidebar badge DW
+  const dw = await api(`/clients/${clientId}/darkweb-alerts?unacknowledged_only=true&limit=1`);
+  if (dw && dw.unacknowledged > 0) {
+    document.getElementById('dwBadge').textContent = dw.unacknowledged;
+    document.getElementById('dwBadge').style.display = '';
+    document.getElementById('dwTabBadge').textContent = ` (${dw.unacknowledged})`;
+  }
+}
+
+// ── ASSETS ────────────────────────────────────────────────────────────────────
+
+async function loadAssets() {
+  if (!clientId) return;
+  const data = await api(`/admin/clients/${clientId}/assets`);
+  if (data) document.getElementById('statAssets').textContent = data.count || 0;
+}
+
+// ── REMEDIATION TAB ───────────────────────────────────────────────────────────
+
+async function loadRemediations() {
+  if (!clientId) return;
+  const data = await api(`/clients/${clientId}/remediations`);
+  const el = document.getElementById('remItems');
+  if (!data || !data.length) { el.innerHTML = '<div class="empty-state">No open remediations</div>'; return; }
+  el.innerHTML = data.map(r => `
+    <div class="item-row">
+      <div class="sev-dot sev-${r.severity || 'MEDIUM'}"></div>
+      <div class="item-body">
+        <div class="item-title">${r.title || r.item_id}</div>
+        <div class="item-meta">Due: ${r.due_date || 'N/A'} &middot; Status: ${r.status} &middot; ${r.assigned_to || 'Unassigned'}</div>
+        <div class="item-badges">
+          <span class="pill ${r.is_overdue ? 'badge-red' : ''}">${r.is_overdue ? 'OVERDUE' : r.status}</span>
+          ${r.sla_days ? `<span class="pill">SLA: ${r.sla_days}d</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── DARK WEB TAB ──────────────────────────────────────────────────────────────
+
+async function loadDarkwebAlerts() {
+  if (!clientId) return;
+  const unackOnly = document.getElementById('dwUnackOnly').checked;
+  const data = await api(`/clients/${clientId}/darkweb-alerts?limit=100${unackOnly ? '&unacknowledged_only=true' : ''}`);
+  const el = document.getElementById('dwAlerts');
+  if (!data || !data.alerts || !data.alerts.length) {
+    el.innerHTML = '<div class="empty-state">No dark web alerts for this client<br><small>Alerts appear when client identifiers are found in paste sites, gists, or ransomware leak feeds</small></div>';
+    return;
+  }
+  el.innerHTML = data.alerts.map(a => `
+    <div class="dw-alert${a.is_acknowledged ? ' acknowledged' : ''}" id="dwa-${a.id}">
+      <div class="dw-header">
+        <span class="dw-source">${a.source}</span>
+        <span class="dw-type">${a.alert_type.replace(/_/g,' ')}</span>
+        <span style="margin-left:auto;font-size:9px;color:var(--muted)">${timeAgo(a.detected_at)}</span>
+      </div>
+      <div class="dw-term">Matched: <code style="font-size:11px">${a.matched_term}</code></div>
+      ${a.content_preview ? `<div class="dw-preview">${a.content_preview.slice(0, 200)}...</div>` : ''}
+      <div class="dw-actions">
+        ${a.url ? `<a class="dw-url" href="${a.url}" target="_blank">${a.url.slice(0, 60)}...</a>` : ''}
+        ${!a.is_acknowledged ? `<button class="btn btn-sm" onclick="ackAlert('${a.id}')">Acknowledge</button>` : '<span style="font-size:9px;color:var(--muted)">Acknowledged</span>'}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function ackAlert(alertId) {
+  await api(`/clients/${clientId}/darkweb-alerts/${alertId}/acknowledge`, { method: 'POST' });
+  document.getElementById('dwa-' + alertId).classList.add('acknowledged');
+  toast('Alert acknowledged', 'success');
+}
+
+async function triggerDarkwebScan() {
+  toast('Scanning dark web sources...', 'info', 5000);
+  const data = await api(`/clients/${clientId}/darkweb-scan`, { method: 'POST' });
+  if (data) {
+    toast(`Scan complete: ${data.new_alerts} new alerts`, data.new_alerts > 0 ? 'error' : 'success');
+    loadDarkwebAlerts();
+  }
+}
+
+// ── TABLETOP TAB ──────────────────────────────────────────────────────────────
+
+async function loadTabletops() {
+  if (!clientId) return;
+  const data = await api(`/clients/${clientId}/tabletop`);
+  const el = document.getElementById('tabletopList');
+  if (!data || !data.length) {
+    el.innerHTML = '<div class="empty-state">No tabletop exercises generated yet<br><small>Click "Generate Scenario" to create an AI-powered tabletop exercise based on current threats</small></div>';
+    return;
+  }
+  el.innerHTML = data.map(ex => `
+    <div class="item-row">
+      <div class="item-body">
+        <div class="item-title">${ex.title || ex.scenario_type + ' scenario'}</div>
+        <div class="item-meta">Generated: ${timeAgo(ex.generated_at)} &middot; Type: ${ex.scenario_type}</div>
+        <div class="item-badges">
+          ${ex.conducted_at ? `<span class="pill badge-teal">Conducted</span>` : '<span class="pill">Draft</span>'}
+          ${ex.participants ? `<span class="pill">${ex.participants} participants</span>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <a class="btn btn-sm" href="${API}/clients/${clientId}/tabletop/${ex.id}/facilitator.pdf?token=${token}" target="_blank">Facilitator PDF</a>
+        <a class="btn btn-sm" href="${API}/clients/${clientId}/tabletop/${ex.id}/participant.pdf?token=${token}" target="_blank">Participant PDF</a>
+        <a class="btn btn-sm" href="${API}/clients/${clientId}/tabletop/${ex.id}/slides.pptx?token=${token}" target="_blank">Slides</a>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function generateTabletop() {
+  const types = ['ransomware', 'data_breach', 'supply_chain', 'nation_state', 'insider_threat'];
+  const type = prompt('Scenario type:\n' + types.join(', '), 'ransomware');
+  if (!type) return;
+  toast('Generating scenario with AI... this may take 30-60 seconds', 'info', 60000);
+  const data = await api(`/clients/${clientId}/tabletop/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ scenario_type: type, days_lookback: 30 }),
+  });
+  if (data) {
+    toast('Scenario generated!', 'success');
+    loadTabletops();
+  } else {
+    toast('Generation failed — check Ollama is running', 'error');
+  }
+}
+
+// ── SUPPLY CHAIN TAB ──────────────────────────────────────────────────────────
+
+async function loadSupplyChain() {
+  if (!clientId) return;
+  const data = await api(`/clients/${clientId}/vendors`);
+  const el = document.getElementById('vendorList');
+  if (!data || !data.length) {
+    el.innerHTML = '<div class="empty-state">No vendors added yet</div>';
+    return;
+  }
+  const threatColors = { high: 'var(--red)', medium: 'var(--amber)', low: 'var(--green)', unknown: 'var(--muted)' };
+  el.innerHTML = `<div class="section-header">Vendor List</div>` + data.map(v => `
+    <div class="item-row">
+      <div class="sev-dot" style="background:${threatColors[v.threat_level || 'unknown']}"></div>
+      <div class="item-body">
+        <div class="item-title">${v.vendor_name}</div>
+        <div class="item-meta">${v.vendor_type || 'Unknown type'} &middot; Criticality: ${v.criticality} &middot; Exposures: ${v.exposure_count || 0}</div>
+        <div class="item-badges">
+          ${(v.data_types || []).map(d => `<span class="pill">${d}</span>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="deleteVendor('${v.id}')">Remove</button>
+    </div>
+  `).join('');
+}
+
+async function addVendorForm() {
+  const name = prompt('Vendor name:');
+  if (!name) return;
+  const types = ['SaaS', 'Cloud', 'Hardware', 'Software', 'Service', 'MSP'];
+  const type = prompt('Vendor type:\n' + types.join(', '), 'SaaS');
+  const criticality = prompt('Criticality (low/medium/high):', 'medium');
+  const dataTypes = prompt('Data types shared (comma-separated, e.g., PII,PHI,Financial):', '');
+  const r = await api(`/clients/${clientId}/vendors`, {
+    method: 'POST',
+    body: JSON.stringify({
+      vendor_name: name, vendor_type: type || 'Unknown',
+      criticality: criticality || 'medium',
+      data_types: dataTypes ? dataTypes.split(',').map(s => s.trim()) : [],
+    }),
+  });
+  if (r) { toast('Vendor added', 'success'); loadSupplyChain(); }
+}
+
+async function deleteVendor(vid) {
+  if (!confirm('Remove this vendor?')) return;
+  await api(`/clients/${clientId}/vendors/${vid}`, { method: 'DELETE' });
+  toast('Vendor removed', 'success');
+  loadSupplyChain();
+}
+
+async function downloadScReport(e) {
+  e.preventDefault();
+  window.open(`${API}/clients/${clientId}/vendors/report.pdf?token=${token}`, '_blank');
+}
+
+// ── RISK PORTFOLIO TAB ────────────────────────────────────────────────────────
+
+async function loadRiskPortfolio() {
+  if (!clientId) return;
+  const data = await api(`/clients/${clientId}/risk-portfolio`);
+  if (!data) return;
+
+  document.getElementById('totalExposure').textContent = fmtMoney(data.total_expected_loss);
+  document.getElementById('totalRemCost').textContent = fmtMoney(data.total_remediation_cost);
+  const roi = data.portfolio_roi ? data.portfolio_roi.toFixed(0) + 'x' : 'N/A';
+  document.getElementById('portfolioRoi').textContent = roi;
+
+  // Update topbar
+  if (data.total_expected_loss > 0) {
+    document.getElementById('exposureWidget').style.display = 'flex';
+    document.getElementById('exposureTopbar').textContent = fmtMoney(data.total_expected_loss);
+  }
+
+  const el = document.getElementById('riskItemsList');
+  const items = data.top_items || [];
+  if (!items.length) { el.innerHTML = '<div class="empty-state">No risk data — assign client industry in Admin</div>'; return; }
+  el.innerHTML = items.map((item, i) => `
+    <div class="exposure-row">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:20px">#${i+1}</span>
+      <div class="exposure-item">
+        <div>${item.title ? item.title.slice(0, 80) : 'Unknown'}</div>
+        <div class="exposure-meta">${item.severity} &middot; ${(item.breach_probability * 100).toFixed(1)}% breach probability</div>
+      </div>
+      <div class="exposure-loss">${fmtMoney(item.expected_loss)}</div>
+    </div>
+  `).join('');
+}
+
+async function downloadRoiReport() {
+  window.open(`${API}/clients/${clientId}/roi-report.pdf?token=${token}`, '_blank');
+}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
+
+async function loadNotifications() {
+  const data = await api(`/notifications?limit=10`);
+  if (!data) return;
+  const count = data.count || 0;
+  const badge = document.getElementById('notifBadge');
+  if (count > 0) { badge.style.display = 'flex'; badge.textContent = count; }
+  const el = document.getElementById('notifList');
+  if (!data.notifications || !data.notifications.length) return;
+  el.innerHTML = data.notifications.map(n => `
+    <div class="notif-item">
+      <div class="notif-type">${n.type.replace(/_/g,' ').toUpperCase()}</div>
+      <div class="notif-title">${n.title}</div>
+      <div class="notif-time">${timeAgo(n.timestamp)}</div>
+    </div>
+  `).join('');
+}
+
+function toggleNotif() {
+  document.getElementById('notifDropdown').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.notif-btn') && !e.target.closest('.notif-dropdown')) {
+    document.getElementById('notifDropdown').classList.remove('open');
+  }
+});
+
+// ── NAV HELPERS ───────────────────────────────────────────────────────────────
+
+function downloadDeck() {
+  window.open(`${API}/clients/${clientId}/deck.pptx?token=${token}`, '_blank');
+}
+function openCmmc() {
+  window.location.href = `cmmc.html?client_id=${clientId}`;
+}
+function openTabletop() {
+  switchTab('tabletop');
+}
+
+// ── CLIENT NAME ───────────────────────────────────────────────────────────────
+
+async function loadClientName() {
+  if (!clientId) return;
+  const data = await api(`/admin/clients/${clientId}`);
+  if (data) {
+    document.getElementById('clientName').textContent = data.name || clientId;
+    document.title = `${data.name} — PhantomFeed`;
+  }
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+
+async function init() {
+  if (!clientId) {
+    document.getElementById('feedItems').innerHTML = '<div class="empty-state">No client_id in URL. Append ?client_id=YOUR_ID</div>';
+    return;
+  }
+  await loadClientName();
+  await Promise.all([loadFeed(), loadAssets(), loadPosture(), loadNotifications()]);
+}
+
+init();
+</script>
+</body>
+</html>

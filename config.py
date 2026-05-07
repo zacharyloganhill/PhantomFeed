@@ -62,6 +62,35 @@ VIRUSTOTAL_API_KEY   = os.getenv("VIRUSTOTAL_API_KEY", "")
 GREYNOISE_API_KEY    = os.getenv("GREYNOISE_API_KEY", "")
 ADMIN_SLACK_WEBHOOK  = os.getenv("ADMIN_SLACK_WEBHOOK", "")
 
+# ── Dark Web Monitoring ────────────────────────────────────────────────────────
+HIBP_API_KEY         = os.getenv("HIBP_API_KEY", "")
+TELEGRAM_BOT_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN", "")
+GITHUB_TOKEN         = os.getenv("GITHUB_TOKEN", "")
+
+RANSOMWARE_FEEDS = [
+    {
+        "name": "RansomWatch",
+        "url": "https://raw.githubusercontent.com/joshhighet/ransomwatch/main/posts.json",
+        "type": "json",
+    },
+]
+
+# ── MISP Integration ──────────────────────────────────────────────────────────
+MISP_URL           = os.getenv("MISP_URL", "")
+MISP_API_KEY       = os.getenv("MISP_API_KEY", "")
+MISP_VERIFY_SSL    = os.getenv("MISP_VERIFY_SSL", "true").lower() == "true"
+MISP_SHARING_GROUP = os.getenv("MISP_SHARING_GROUP", "")
+
+PUBLIC_MISP_FEEDS = [
+    {"name": "CIRCL OSINT", "url": "https://www.circl.lu/doc/misp/feed-osint/", "format": "misp"},
+    {"name": "abuse.ch MISP", "url": "https://urlhaus.abuse.ch/downloads/misp/", "format": "misp"},
+]
+
+# ── MSP Contact (for report footers) ─────────────────────────────────────────
+MSP_NAME    = os.getenv("MSP_NAME", "PhantomFeed MSP")
+MSP_EMAIL   = os.getenv("MSP_EMAIL", "")
+MSP_PHONE   = os.getenv("MSP_PHONE", "")
+
 # ── SMTP (for email digests) ──────────────────────────────────────────────────
 SMTP_HOST     = os.getenv("SMTP_HOST", "")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))

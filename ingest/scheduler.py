@@ -186,6 +186,18 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Dark web monitors — every 30 minutes
+    from ingest.darkweb import run_all_darkweb_monitors
+    scheduler.add_job(
+        run_all_darkweb_monitors,
+        trigger=IntervalTrigger(minutes=30),
+        id="darkweb_monitor",
+        name="Dark Web Monitor",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+
     scheduler.start()
     console.print(
         f"[green]✓ Scheduler started[/] — "
