@@ -307,9 +307,10 @@ async function loadNotifications() {
       el.innerHTML = '<div class="notif-item ok"><div class="notif-body"><div class="notif-title">All systems nominal</div><div class="notif-meta">No recent alerts</div></div></div>';
       return;
     }
-    el.innerHTML = items.map(n => {
+    el.innerHTML = items.slice(0, 8).map(n => {
       const cls = n.severity === 'CRITICAL' ? 'cr' : n.severity === 'HIGH' ? 'hi' : 'ok';
-      return `<div class="notif-item ${cls}"><div class="notif-body"><div class="notif-title">${esc(n.title)}</div><div class="notif-meta">${esc(n.source||'')} &nbsp;·&nbsp; ${esc(n.ts||'')}</div></div></div>`;
+      const ts = (n.timestamp || '').slice(0, 16).replace('T', ' ');
+      return `<div class="notif-item ${cls}"><div class="notif-body"><div class="notif-title">${esc(n.title)}</div><div class="notif-meta">${esc(n.detail||'')} &nbsp;·&nbsp; ${esc(ts)}</div></div></div>`;
     }).join('');
   } catch(e) {
     document.getElementById('notifList').innerHTML = '<div class="notif-item"><div class="notif-body"><div class="notif-title">Activity feed unavailable</div></div></div>';

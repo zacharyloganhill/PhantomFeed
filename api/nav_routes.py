@@ -64,45 +64,6 @@ async def ksi_summary(user=Depends(get_current_user)):
     }
 
 
-@router.get("/notifications", summary="Recent platform notifications and alerts")
-async def notifications(limit: int = 20, user=Depends(get_current_user)):
-    conn = db.get_db()
-    items = []
-
-    # Recent CRITICAL/HIGH threat items
-    async with conn.execute(
-        "SELECT title, severity, feed_label, fetched_at FROM threat_items "
-        "WHERE severity IN ('CRITICAL','HIGH') AND is_new = 1 "
-        "ORDER BY fetched_at DESC LIMIT ?", (limit // 2,)
-    ) as cur:
-        for row in await cur.fetchall():
-            items.append({
-                "title": row["title"],
-                "severity": row["severity"],
-                "source": row["feed_label"],
-                "ts": (row["fetched_at"] or "")[:16],
-                "type": "threat",
-            })
-
-    # Recent scan findings (CRITICAL/HIGH)
-    async with conn.execute(
-        "SELECT title, severity, scanner_type, first_seen FROM scan_findings "
-        "WHERE severity IN ('CRITICAL','HIGH') "
-        "ORDER BY first_seen DESC LIMIT ?", (limit // 2,)
-    ) as cur:
-        for row in await cur.fetchall():
-            items.append({
-                "title": row["title"],
-                "severity": row["severity"],
-                "source": f"Scanner: {row['scanner_type']}",
-                "ts": (row["first_seen"] or "")[:16],
-                "type": "scan_finding",
-            })
-
-    # Sort by timestamp descending and trim
-    items.sort(key=lambda x: x["ts"], reverse=True)
-    return {"notifications": items[:limit], "total": len(items)}
-
 
 @router.get("/clients/{client_id}/metrics", summary="Per-client security metrics")
 async def client_metrics(client_id: str, user=Depends(get_current_user)):
