@@ -603,21 +603,23 @@ async function generateTabletop() {
 
 async function loadSupplyChain() {
   if (!clientId) return;
-  const data = await api(`/clients/${clientId}/vendors`);
+  const resp = await api(`/clients/${clientId}/vendors`);
+  const data = resp ? resp.vendors : [];
   const el = document.getElementById('vendorList');
   if (!data || !data.length) {
-    el.innerHTML = '<div class="empty-state">No vendors added yet</div>';
+    el.innerHTML = '<div class="empty-state">No vendors tracked yet.<br><small>Use the full Supply Chain graph for vendor management.</small><br><a href="supplychain.html?client_id='+clientId+'" class="btn btn-sm" style="margin-top:8px;display:inline-block">Open Graph View</a></div>';
     return;
   }
   const threatColors = { high: 'var(--red)', medium: 'var(--amber)', low: 'var(--green)', unknown: 'var(--muted)' };
-  el.innerHTML = `<div class="section-header">Vendor List</div>` + data.map(v => `
+  el.innerHTML = `<div style="text-align:right;margin-bottom:8px"><a href="supplychain.html?client_id=${clientId}" class="btn btn-sm">Open Graph View</a></div>` + data.map(v => `
     <div class="item-row">
       <div class="sev-dot" style="background:${threatColors[v.threat_level || 'unknown']}"></div>
       <div class="item-body">
-        <div class="item-title">${v.vendor_name}</div>
-        <div class="item-meta">${v.vendor_type || 'Unknown type'} &middot; Criticality: ${v.criticality} &middot; Exposures: ${v.exposure_count || 0}</div>
+        <div class="item-title">${esc(v.vendor_name)}</div>
+        <div class="item-meta">${esc(v.vendor_type || 'Unknown type')} · Criticality: ${v.criticality} · Items: ${(v.risk_data && v.risk_data.item_count) || 0}</div>
         <div class="item-badges">
-          ${(v.data_types || []).map(d => `<span class="pill">${d}</span>`).join('')}
+          <span class="pill" style="background:${threatColors[v.threat_level||'unknown']}22;border-color:${threatColors[v.threat_level||'unknown']}">${(v.threat_level||'unknown').toUpperCase()}</span>
+          ${(v.products || []).slice(0,3).map(p => `<span class="pill">${esc(p)}</span>`).join('')}
         </div>
       </div>
       <button class="btn btn-sm btn-danger" onclick="deleteVendor('${v.id}')">Remove</button>
@@ -628,19 +630,19 @@ async function loadSupplyChain() {
 async function addVendorForm() {
   const name = prompt('Vendor name:');
   if (!name) return;
-  const types = ['SaaS', 'Cloud', 'Hardware', 'Software', 'Service', 'MSP'];
-  const type = prompt('Vendor type:\n' + types.join(', '), 'SaaS');
+  const products = prompt('Products (comma-separated, e.g., Windows, Exchange):', '') || '';
   const criticality = prompt('Criticality (low/medium/high):', 'medium');
-  const dataTypes = prompt('Data types shared (comma-separated, e.g., PII,PHI,Financial):', '');
   const r = await api(`/clients/${clientId}/vendors`, {
     method: 'POST',
     body: JSON.stringify({
-      vendor_name: name, vendor_type: type || 'Unknown',
+      vendor_name: name,
+      vendor_type: 'software',
       criticality: criticality || 'medium',
-      data_types: dataTypes ? dataTypes.split(',').map(s => s.trim()) : [],
+      products: products ? products.split(',').map(s => s.trim()).filter(Boolean) : [],
     }),
   });
-  if (r) { toast('Vendor added', 'success'); loadSupplyChain(); }
+  if (r && r.id) { toast('Vendor added', 'success'); loadSupplyChain(); }
+  else toast('Failed to add vendor', 'error');
 }
 
 async function deleteVendor(vid) {
@@ -648,11 +650,6 @@ async function deleteVendor(vid) {
   await api(`/clients/${clientId}/vendors/${vid}`, { method: 'DELETE' });
   toast('Vendor removed', 'success');
   loadSupplyChain();
-}
-
-async function downloadScReport(e) {
-  e.preventDefault();
-  window.open(`${API}/clients/${clientId}/vendors/report.pdf?token=${token}`, '_blank');
 }
 
 // ── RISK PORTFOLIO TAB ────────────────────────────────────────────────────────

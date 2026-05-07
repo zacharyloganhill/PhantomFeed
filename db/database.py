@@ -321,6 +321,10 @@ PHASE3_MIGRATIONS = [
     "ALTER TABLE threat_items ADD COLUMN expected_loss REAL;",
     "ALTER TABLE threat_items ADD COLUMN remediation_cost REAL;",
     "ALTER TABLE threat_items ADD COLUMN epss_score REAL;",
+    "ALTER TABLE client_vendors ADD COLUMN products TEXT DEFAULT '[]';",
+    "ALTER TABLE client_vendors ADD COLUMN category TEXT DEFAULT '';",
+    "ALTER TABLE client_vendors ADD COLUMN threat_level TEXT DEFAULT 'unknown';",
+    "ALTER TABLE client_vendors ADD COLUMN risk_data TEXT DEFAULT '{}';",
 ]
 
 _db: Optional[aiosqlite.Connection] = None
@@ -1206,6 +1210,14 @@ async def get_vendors(client_id: str) -> list[dict]:
             d["data_types"] = json.loads(d.get("data_types") or "[]")
         except Exception:
             d["data_types"] = []
+        try:
+            d["products"] = json.loads(d.get("products") or "[]")
+        except Exception:
+            d["products"] = []
+        try:
+            d["risk_data"] = json.loads(d.get("risk_data") or "{}")
+        except Exception:
+            d["risk_data"] = {}
         result.append(d)
     return result
 
@@ -1215,6 +1227,41 @@ async def delete_vendor(vendor_id: str):
     await db.execute("DELETE FROM vendor_exposures WHERE vendor_id = ?", (vendor_id,))
     await db.execute("DELETE FROM client_vendors WHERE id = ?", (vendor_id,))
     await db.commit()
+
+
+# Aliases used by supply_chain_monitor
+async def get_client_vendors(client_id: str) -> list[dict]:
+    return await get_vendors(client_id)
+
+
+async def update_vendor_risk(client_id: str, vendor_id: str, threat_level: str, risk_data: dict):
+    db = get_db()
+    await db.execute(
+        "UPDATE client_vendors SET threat_level = ?, risk_data = ? WHERE id = ? AND client_id = ?",
+        (threat_level, json.dumps(risk_data), vendor_id, client_id),
+    )
+    await db.commit()
+
+
+async def create_vendor_full(client_id: str, vendor_name: str, vendor_type: str = "",
+                              criticality: str = "medium", products: list = None,
+                              category: str = "", contact_email: str = "") -> dict:
+    db = get_db()
+    vid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    await db.execute(
+        """INSERT INTO client_vendors
+           (id, client_id, vendor_name, vendor_type, criticality, products, category,
+            data_types, contact_email, threat_level, risk_data, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (vid, client_id, vendor_name, vendor_type, criticality,
+         json.dumps(products or []), category, "[]", contact_email, "unknown", "{}", now),
+    )
+    await db.commit()
+    return {"id": vid, "client_id": client_id, "vendor_name": vendor_name,
+            "vendor_type": vendor_type, "criticality": criticality,
+            "products": products or [], "category": category,
+            "threat_level": "unknown", "created_at": now}
 
 
 async def get_vendor_exposure_count(vendor_id: str) -> int:
