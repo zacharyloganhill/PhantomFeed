@@ -44,9 +44,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     console.print(Panel.fit(
         "[bold cyan]ThreatPulse Intelligence Feed[/]\n"
-        f"[dim]API → http://{config.HOST}:{config.PORT}[/]\n"
-        f"[dim]Docs → http://{config.HOST}:{config.PORT}/docs[/]\n"
-        f"[dim]Database → {config.DB_PATH}[/]",
+        f"[dim]API:  http://{config.HOST}:{config.PORT}[/]\n"
+        f"[dim]Docs: http://{config.HOST}:{config.PORT}/docs[/]\n"
+        f"[dim]DB:   {config.DB_PATH}[/]",
         border_style="cyan"
     ))
 

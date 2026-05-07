@@ -85,11 +85,12 @@ async def _cleanup_old_temp():
 @router.post("/upload/scan")
 async def upload_scan(
     file: UploadFile = File(...),
-    client_id: Optional[str] = Query(None),
     background_tasks: BackgroundTasks = None,
+    client_id: Optional[str] = Query(None),
 ):
     """Auto-detect scan format, parse, return preview."""
-    background_tasks.add_task(_cleanup_old_temp)
+    if background_tasks:
+        background_tasks.add_task(_cleanup_old_temp)
 
     data = await file.read()
     filename = file.filename or "upload.bin"
@@ -129,11 +130,7 @@ async def upload_scan(
 # ---------------------------------------------------------------------------
 
 @router.post("/upload/scan/{upload_id}/confirm")
-async def confirm_scan(
-    upload_id: str,
-    body: dict = None,
-    background_tasks: BackgroundTasks = None,
-):
+async def confirm_scan(upload_id: str):
     """Confirm and import a previously previewed scan file."""
     from uploads.upload_log import get_upload_log, update_upload_log
     log = await get_upload_log(upload_id)
@@ -354,8 +351,8 @@ async def confirm_assets(
 @router.post("/upload/iocs")
 async def upload_iocs(
     file: UploadFile = File(...),
-    client_id: Optional[str] = Query(None),
     background_tasks: BackgroundTasks = None,
+    client_id: Optional[str] = Query(None),
 ):
     """Preview IOC list; triggers enrichment as background task."""
     data = await file.read()

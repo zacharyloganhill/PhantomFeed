@@ -152,6 +152,8 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    from apscheduler.triggers.cron import CronTrigger
+
     # Daily SLA overdue check — 7am UTC
     from reports.sla_engine import check_overdue
     scheduler.add_job(
@@ -163,7 +165,6 @@ def start_scheduler():
     )
 
     # Weekly email digest — every Monday at 08:00 UTC
-    from apscheduler.triggers.cron import CronTrigger
     scheduler.add_job(
         _send_weekly_digests,
         trigger=CronTrigger(day_of_week="mon", hour=8, minute=0),
