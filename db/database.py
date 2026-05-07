@@ -1434,3 +1434,45 @@ async def get_notifications(client_id: str = None, limit: int = 10) -> list[dict
 
     notifications.sort(key=lambda x: x["timestamp"], reverse=True)
     return notifications[:limit]
+
+
+# ── CMMC Assessment CRUD ──────────────────────────────────────────────────────
+
+async def get_cmmc_assessment(client_id: str) -> Optional[dict]:
+    db = get_db()
+    async with db.execute(
+        "SELECT * FROM cmmc_assessments WHERE client_id = ? ORDER BY created_at DESC LIMIT 1",
+        (client_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    import json as _json
+    d["practices"] = _json.loads(d.get("practices_json") or "{}")
+    return d
+
+
+async def save_cmmc_assessment(client_id: str, practices: dict) -> dict:
+    import json as _json
+    db = get_db()
+    now = datetime.utcnow().isoformat()
+    # Check if row exists
+    async with db.execute(
+        "SELECT id FROM cmmc_assessments WHERE client_id = ?", (client_id,)
+    ) as cur:
+        existing = await cur.fetchone()
+    practices_json = _json.dumps(practices)
+    if existing:
+        await db.execute(
+            "UPDATE cmmc_assessments SET practices_json = ?, assessed_at = ? WHERE client_id = ?",
+            (practices_json, now, client_id),
+        )
+    else:
+        await db.execute(
+            """INSERT INTO cmmc_assessments (id, client_id, practices_json, assessed_at)
+               VALUES (?,?,?,?)""",
+            (str(uuid.uuid4()), client_id, practices_json, now),
+        )
+    await db.commit()
+    return {"client_id": client_id, "assessed_at": now}

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhantomFeed — CMMC 2.0 Assessment</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a0d;--bg2:#0c0f14;--bg3:#111620;--bg4:#161c28;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#c9d4e3;--muted:#4e5d72;
+  --teal:#00d4aa;--teal-d:rgba(0,212,170,0.08);--teal-m:rgba(0,212,170,0.15);
+  --red:#f0595a;--red-d:rgba(240,89,90,0.1);
+  --amber:#e8a530;--blue:#4d9de0;--green:#3dd68c;--purple:#9b8ef5;
+  --mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;overflow:hidden}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1e2836}
+.shell{display:grid;grid-template-rows:44px 1fr 28px;height:100vh}
+.topbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.logo-text{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--teal)}
+.logo-pulse{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.page-title{font-size:9px;letter-spacing:2px;color:var(--muted);border-left:1px solid var(--border);padding-left:14px}
+.topnav{display:flex;gap:4px;margin-left:auto}
+.tnav{font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:all .15s}
+.tnav:hover,.tnav.active{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.statusbar{background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:16px;font-size:8px;color:var(--muted);letter-spacing:.5px}
+.layout{display:grid;grid-template-columns:280px 1fr;height:100%;overflow:hidden}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:12px 0}
+.main{overflow-y:auto;padding:20px}
+.section-header{font-size:10px;letter-spacing:2px;color:var(--teal);text-transform:uppercase;margin-bottom:14px;margin-top:20px;display:flex;align-items:center;gap:8px}
+.section-header::after{content:'';flex:1;height:1px;background:var(--border)}
+.section-header:first-child{margin-top:0}
+.btn{font-family:var(--mono);font-size:9px;letter-spacing:.5px;padding:5px 12px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s}
+.btn:hover,.btn.primary{border-color:var(--teal);color:var(--teal);background:var(--teal-d)}
+.btn.sm{padding:3px 8px;font-size:8px}
+.btn.success{border-color:rgba(61,214,140,.4);color:var(--green);background:rgba(61,214,140,.06)}
+.btn.warn{border-color:rgba(232,165,48,.4);color:var(--amber);background:rgba(232,165,48,.06)}
+.badge{display:inline-block;font-size:7px;letter-spacing:.5px;padding:2px 6px;border:1px solid;border-radius:2px}
+.badge.impl{border-color:rgba(61,214,140,.4);color:var(--green)}
+.badge.partial{border-color:rgba(232,165,48,.4);color:var(--amber)}
+.badge.ni{border-color:rgba(240,89,90,.4);color:var(--red)}
+.badge.na{border-color:var(--border);color:var(--muted)}
+/* Score overview */
+.score-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.score-card{background:var(--bg3);border:1px solid var(--border);padding:14px;text-align:center}
+.score-val{font-size:28px;font-weight:700;color:var(--teal)}
+.score-label{font-size:8px;color:var(--muted);letter-spacing:1px;margin-top:4px}
+/* Domain cards */
+.domain-card{background:var(--bg3);border:1px solid var(--border);margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.domain-card:hover{border-color:var(--teal)}
+.domain-header{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.domain-name{flex:1;font-size:10px;font-weight:600}
+.domain-score{font-size:9px;color:var(--teal);font-weight:700;min-width:36px;text-align:right}
+.progress-bar{height:3px;background:var(--bg4);flex:0 0 100px;border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;transition:width .5s}
+.domain-body{display:none;border-top:1px solid var(--border)}
+.domain-card.open .domain-body{display:block}
+/* Practice table */
+.practice-row{display:grid;grid-template-columns:130px 1fr 120px 100px;gap:0;border-bottom:1px solid var(--border);padding:6px 14px;align-items:center;font-size:9px;transition:background .1s}
+.practice-row:hover{background:rgba(255,255,255,.02)}
+.practice-id{font-family:var(--mono);color:var(--muted);font-size:8px}
+.practice-title{color:var(--text)}
+.practice-status{text-align:center}
+.status-select{font-family:var(--mono);font-size:8px;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:2px 6px;outline:none;cursor:pointer}
+.status-select:focus{border-color:var(--teal)}
+/* Sidebar domain list */
+.dom-item{padding:7px 14px;cursor:pointer;font-size:9px;color:var(--muted);border-left:2px solid transparent;transition:all .12s;display:flex;justify-content:space-between;align-items:center}
+.dom-item:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.dom-item.active{color:var(--text);background:var(--teal-d);border-left-color:var(--teal)}
+.dom-score{font-size:8px;color:var(--teal)}
+.client-select{font-family:var(--mono);font-size:9px;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:5px 8px;outline:none;width:100%;margin-bottom:12px}
+.client-select:focus{border-color:var(--teal)}
+.slabel{font-size:8px;letter-spacing:2px;color:var(--muted);padding:8px 14px 4px;text-transform:uppercase}
+.toast-container{position:fixed;bottom:40px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:9px 14px;background:var(--bg3);border:1px solid var(--border);font-size:9px;color:var(--text);display:flex;align-items:center;gap:10px;animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.toast.success{border-color:rgba(61,214,140,.4)}.toast.error{border-color:rgba(240,89,90,.4)}
+.spinner{display:inline-block;width:10px;height:10px;border:1px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="topbar">
+  <div class="logo-pulse"></div>
+  <div class="logo-text">PHANTOMFEED</div>
+  <div class="page-title">CMMC 2.0 GAP ASSESSMENT</div>
+  <nav class="topnav">
+    <a class="tnav" href="dashboard.html">DASHBOARD</a>
+    <a class="tnav" href="analytics.html">ANALYTICS</a>
+    <a class="tnav active" href="cmmc.html">CMMC</a>
+    <a class="tnav" href="actors.html">ACTORS</a>
+    <a class="tnav" href="admin.html">ADMIN</a>
+  </nav>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="slabel">Client</div>
+    <div style="padding:0 12px 8px">
+      <select class="client-select" id="clientSelect" onchange="onClientChange()">
+        <option value="">Select client...</option>
+      </select>
+    </div>
+    <div class="slabel">Domains</div>
+    <div id="domain-nav"></div>
+    <div style="padding:12px;border-top:1px solid var(--border);margin-top:8px">
+      <button class="btn sm" style="width:100%;margin-bottom:6px" onclick="savePending()">Save Changes</button>
+      <button class="btn sm" style="width:100%" onclick="exportReport()">Export Report</button>
+    </div>
+  </div>
+
+  <div class="main" id="main-panel">
+    <div style="color:var(--muted);font-size:11px;padding:40px;text-align:center">Select a client to begin CMMC 2.0 Level 2 gap assessment</div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <div style="width:4px;height:4px;border-radius:50%;background:var(--muted)" id="sb-dot"></div>
+  <span id="sb-status">LOADING...</span>
+  <span style="margin-left:auto">110 PRACTICES · NIST SP 800-171 REV 2</span>
+</div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const API = '/api/v1';
+let assessment = null;
+let pendingChanges = {}; // practiceId → {status, notes}
+let clientId = null;
+const params = new URLSearchParams(location.search);
+
+function toast(msg, type='info', dur=3000) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.innerHTML = `<span>${msg}</span><span style="margin-left:auto;cursor:pointer" onclick="this.parentElement.remove()">✕</span>`;
+  document.getElementById('toast-container').appendChild(t);
+  if (dur) setTimeout(()=>t.remove(), dur);
+}
+
+function getToken() { return localStorage.getItem('pf_token') || ''; }
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function loadClients() {
+  const r = await api('/admin/clients');
+  const sel = document.getElementById('clientSelect');
+  if (!r || !r.length) { sel.innerHTML = '<option value="">No clients</option>'; return; }
+  sel.innerHTML = '<option value="">Select client...</option>' + r.map(c =>
+    `<option value="${c.id}"${params.get('client_id')===c.id?' selected':''}>${esc(c.name)}</option>`
+  ).join('');
+  if (params.get('client_id')) {
+    clientId = params.get('client_id');
+    loadAssessment();
+  }
+}
+
+function onClientChange() {
+  clientId = document.getElementById('clientSelect').value;
+  if (!clientId) return;
+  pendingChanges = {};
+  loadAssessment();
+}
+
+async function loadAssessment() {
+  if (!clientId) return;
+  document.getElementById('main-panel').innerHTML = '<div style="padding:40px;text-align:center"><span class="spinner"></span><div style="margin-top:12px;color:var(--muted)">Loading 110-practice assessment...</div></div>';
+  assessment = await api(`/clients/${clientId}/cmmc/assessment`);
+  if (!assessment) {
+    document.getElementById('main-panel').innerHTML = '<div style="color:var(--red);padding:40px">Failed to load assessment</div>';
+    return;
+  }
+  renderAssessment();
+  document.getElementById('sb-dot').style.background = 'var(--green)';
+  document.getElementById('sb-status').textContent = `LOADED — ${assessment.total_practices} practices · ${assessment.implemented} implemented`;
+}
+
+function statusBadgeClass(s) {
+  return {implemented:'impl', partial:'partial', not_implemented:'ni', not_applicable:'na'}[s] || 'na';
+}
+
+function statusLabel(s) {
+  return {implemented:'IMPLEMENTED', partial:'PARTIAL', not_implemented:'NOT IMPL', not_applicable:'N/A'}[s] || s;
+}
+
+function progressColor(pct) {
+  if (pct >= 70) return 'var(--green)';
+  if (pct >= 40) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function renderAssessment() {
+  const a = assessment;
+  // Score cards
+  const scoreHtml = `
+    <div class="score-grid">
+      <div class="score-card"><div class="score-val" style="color:var(--teal)">${a.score_pct}%</div><div class="score-label">Overall Score</div></div>
+      <div class="score-card"><div class="score-val" style="color:var(--green)">${a.implemented}</div><div class="score-label">Implemented</div></div>
+      <div class="score-card"><div class="score-val" style="color:var(--amber)">${a.partial}</div><div class="score-label">Partial</div></div>
+      <div class="score-card"><div class="score-val" style="color:var(--red)">${a.not_implemented}</div><div class="score-label">Not Implemented</div></div>
+    </div>
+  `;
+
+  // Domain nav
+  const domainNav = a.domains.map(d => `
+    <div class="dom-item" id="nav-${d.domain.replace(/\s+/g,'_')}" onclick="scrollToDomain('${d.domain}')">
+      <span>${d.domain}</span>
+      <span class="dom-score">${d.score_pct}%</span>
+    </div>
+  `).join('');
+  document.getElementById('domain-nav').innerHTML = domainNav;
+
+  // Domain cards with practice rows
+  const domainsHtml = a.domains.map(d => {
+    const domPractices = a.practices.filter(p => p.domain === d.domain);
+    const fill = progressColor(d.score_pct);
+    return `
+      <div class="domain-card" id="dom-${d.domain.replace(/\s+/g,'_')}">
+        <div class="domain-header" onclick="toggleDomain(this.parentElement)">
+          <div class="domain-name">${esc(d.domain)}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${d.score_pct}%;background:${fill}"></div></div>
+          <div class="domain-score">${d.score_pct}%</div>
+          <span style="color:var(--muted);font-size:9px;margin-left:6px">▾</span>
+        </div>
+        <div class="domain-body">
+          <div class="practice-row" style="background:var(--bg4);border-bottom:1px solid var(--border2)">
+            <div style="font-size:8px;color:var(--muted)">PRACTICE ID</div>
+            <div style="font-size:8px;color:var(--muted)">TITLE & DESCRIPTION</div>
+            <div style="font-size:8px;color:var(--muted);text-align:center">STATUS</div>
+            <div style="font-size:8px;color:var(--muted)">NOTES</div>
+          </div>
+          ${domPractices.map(p => `
+            <div class="practice-row" id="pr-${p.id}">
+              <div class="practice-id">${esc(p.id)}</div>
+              <div>
+                <div class="practice-title" style="font-weight:600;margin-bottom:2px">${esc(p.title)}</div>
+                <div style="font-size:8px;color:var(--muted)">${esc(p.description)}</div>
+              </div>
+              <div class="practice-status">
+                <select class="status-select" onchange="markChange('${p.id}', this.value)">
+                  <option value="not_implemented"${p.status==='not_implemented'?' selected':''}>NOT IMPL</option>
+                  <option value="partial"${p.status==='partial'?' selected':''}>PARTIAL</option>
+                  <option value="implemented"${p.status==='implemented'?' selected':''}>IMPLEMENTED</option>
+                  <option value="not_applicable"${p.status==='not_applicable'?' selected':''}>N/A</option>
+                </select>
+              </div>
+              <div>
+                <input type="text" placeholder="Notes..." value="${esc(p.notes||'')}"
+                  style="font-family:var(--mono);font-size:8px;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:3px 6px;outline:none;width:100%"
+                  onchange="markNoteChange('${p.id}', this.value)"
+                  onfocus="this.style.borderColor='var(--teal)'" onblur="this.style.borderColor='var(--border)'">
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('main-panel').innerHTML = scoreHtml + `
+    <div class="section-header">Domain Assessment — 14 Domains · 110 Practices</div>
+    ${domainsHtml}
+  `;
+}
+
+function toggleDomain(card) {
+  card.classList.toggle('open');
+}
+
+function scrollToDomain(domainName) {
+  const id = 'dom-' + domainName.replace(/\s+/g, '_');
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({behavior:'smooth', block:'start'});
+    if (!el.classList.contains('open')) el.classList.add('open');
+  }
+}
+
+function markChange(practiceId, status) {
+  if (!pendingChanges[practiceId]) pendingChanges[practiceId] = {};
+  pendingChanges[practiceId].status = status;
+  // Visual indicator
+  const row = document.getElementById('pr-' + practiceId);
+  if (row) row.style.background = 'rgba(0,212,170,0.04)';
+}
+
+function markNoteChange(practiceId, notes) {
+  if (!pendingChanges[practiceId]) pendingChanges[practiceId] = {};
+  pendingChanges[practiceId].notes = notes;
+}
+
+async function savePending() {
+  if (!clientId || !Object.keys(pendingChanges).length) {
+    toast('No pending changes', 'info');
+    return;
+  }
+  const updates = Object.entries(pendingChanges).map(([practice_id, {status, notes}]) => ({
+    practice_id, status: status || 'not_implemented', notes: notes || ''
+  }));
+  const r = await api(`/clients/${clientId}/cmmc/bulk-update`, {
+    method: 'POST', body: JSON.stringify({updates})
+  });
+  if (r && r.ok) {
+    toast(`Saved ${r.applied} practice updates`, 'success');
+    pendingChanges = {};
+    loadAssessment();
+  } else {
+    toast('Save failed', 'error');
+  }
+}
+
+function exportReport() {
+  if (!assessment) return;
+  const rows = assessment.practices.map(p => [p.id, p.domain, p.title, p.status, p.notes || ''].join(','));
+  const csv = 'Practice ID,Domain,Title,Status,Notes\n' + rows.join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `cmmc-gap-${clientId.slice(0,8)}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+loadClients();
+</script>
+</body>
+</html>
