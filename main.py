@@ -48,6 +48,7 @@ from api.oscal_routes import router as oscal_router
 from api.ksi_routes import router as ksi_router
 from api.audit_routes import router as audit_router
 from api.nav_routes import router as nav_router
+from api.report_routes import router as report_router
 
 console = Console()
 
@@ -156,6 +157,7 @@ app.include_router(oscal_router, tags=["FedRAMP OSCAL"])
 app.include_router(ksi_router, tags=["FedRAMP KSI"])
 app.include_router(audit_router, tags=["FedRAMP Audit"])
 app.include_router(nav_router, tags=["Navigation"])
+app.include_router(report_router, tags=["Reports"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)

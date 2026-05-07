@@ -391,8 +391,8 @@ function renderExportTab() {
 }
 
 function downloadClientReport(clientId) {
-  const days = document.getElementById('rpt-days-admin').value;
-  window.open(`${API}/admin/clients/${clientId}/report.pdf?days=${days}`, '_blank');
+  const token = getToken();
+  window.open(`${API}/clients/${clientId}/report/pdf?token=${token}`, '_blank');
 }
 
 function downloadDeck(clientId) {

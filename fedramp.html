@@ -103,6 +103,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
   <div class="vsep"></div>
   <button class="btn" onclick="triggerKSIValidation()">Run KSI Validation</button>
   <button class="btn" onclick="downloadBundle()">⬇ OSCAL Bundle ZIP</button>
+  <button class="btn primary" onclick="downloadExecutiveReport()">⬇ Executive Report PDF</button>
   <div class="spacer"></div>
   <div id="auth-badge-wrap"></div>
 </div>
@@ -398,6 +399,12 @@ function downloadBundle() {
   const clientId = document.getElementById('client-sel').value;
   if (!clientId) { alert('Select a client first'); return; }
   window.open(`${API}/clients/${clientId}/oscal/bundle.zip?token=${getToken()}`, '_blank');
+}
+
+function downloadExecutiveReport() {
+  const clientId = document.getElementById('client-sel').value;
+  if (!clientId) { alert('Select a client first'); return; }
+  window.open(`${API}/clients/${clientId}/report/pdf?token=${getToken()}`, '_blank');
 }
 
 loadClients();
