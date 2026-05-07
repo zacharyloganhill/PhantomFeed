@@ -290,6 +290,64 @@ curl -X POST http://localhost:8000/api/v1/admin/clients/{id}/webhooks \
 
 ---
 
+## Upload & Export Center
+
+Visit **http://localhost:8000/upload.html** for the full Upload & Export center.
+
+### Supported Upload Formats
+
+| Format | Extension | Parser |
+|--------|-----------|--------|
+| Nessus scan | `.nessus` | Auto-detected; extracts assets + findings per host |
+| Qualys XML | `.xml` | `<HOST>` and `<VULN>` elements |
+| Qualys CSV | `.csv` | QID, Title, Severity, CVE ID columns |
+| OpenVAS XML | `.xml` | `<report>` root, `<result>` with `<nvt>` children |
+| Rapid7/InsightVM CSV | `.csv` | Asset IP Address, Vulnerability Title, Severity columns |
+| Generic CSV/XLSX | `.csv`, `.xlsx` | Fuzzy column mapping (auto-detects hostname/IP/severity/CVE columns) |
+| IOC list (plain text) | `.txt` | One IOC per line; auto-detects IPs, hashes, domains, URLs |
+| IOC list (JSON) | `.json` | Array of `{type, value}` or STIX 2.1 Indicator patterns |
+| STIX 2.1 bundle | `.json` | Full bundle; imports Indicator, Malware, Threat-Actor, Vulnerability objects |
+| Bulk clients | `.csv` | Columns: name, industry, contact_email, min_severity, vendors, products |
+
+Download templates: `GET /api/v1/upload/templates/{assets|clients|iocs}`
+
+### Upload API
+
+```
+POST /api/v1/upload/scan                  Auto-detect and preview scan file
+POST /api/v1/upload/scan/{id}/confirm     Confirm and import (with optional field mapping)
+POST /api/v1/upload/assets                Preview asset CSV/XLSX
+POST /api/v1/upload/assets/{id}/confirm   Confirm asset import
+POST /api/v1/upload/iocs                  Import IOC list (enrichment triggered in background)
+POST /api/v1/upload/stix                  Import STIX 2.1 bundle directly
+POST /api/v1/upload/clients               Bulk client preview
+POST /api/v1/upload/clients/{id}/confirm  Confirm bulk client import
+GET  /api/v1/upload/history               Upload log (filter by client_id)
+GET  /api/v1/upload/templates/{type}      Download CSV template
+```
+
+### Export API
+
+```
+GET /api/v1/export/items.csv             Threat items as CSV (severity, category, search, days filters)
+GET /api/v1/export/items.json            Threat items as JSON
+GET /api/v1/export/iocs.txt?days=7       IOC plain text list
+GET /api/v1/export/iocs.csv?days=7       IOC list as CSV with enrichment data
+GET /api/v1/export/iocs.stix?days=7      IOC list as STIX 2.1 Bundle JSON
+GET /api/v1/clients/{id}/export/remediation.csv   Remediation tracker CSV
+GET /api/v1/clients/{id}/export/remediation.xlsx  Remediation tracker XLSX (color-coded)
+GET /api/v1/clients/{id}/export/detection-rules.zip  SPL + KQL + Sigma ZIP
+POST /api/v1/clients/{id}/export/push-rules-github   Push rules to GitHub repo
+GET /api/v1/clients/{id}/report.html?days=30  HTML report preview with Download PDF button
+```
+
+**Detection Rules ZIP** contains:
+- `splunk/` — Splunk SPL searches per CRITICAL/HIGH item
+- `sentinel/` — Microsoft Sentinel KQL queries
+- `sigma/` — Sigma YAML rules (convert with sigmac or pySigma)
+
+---
+
 ## Quick Actions (AI Analyst)
 
 Each item in the dashboard has four **Quick Actions** that send a pre-built prompt to your local Ollama model:
