@@ -198,3 +198,33 @@ async def summary(
         "overdue_remediations": overdue_count,
         "mttr_avg_days": mttr_avg,
     }
+
+
+# ── Posture & Benchmarking ──────────────────────────────────────────────────
+
+@router.get("/clients/{client_id}/posture", summary="Calculate posture score for a client")
+async def client_posture(client_id: str):
+    from analytics.benchmarking import BenchmarkingEngine
+    engine = BenchmarkingEngine()
+    return await engine.calculate_posture(client_id)
+
+
+@router.get("/clients/{client_id}/posture/history", summary="Posture score history")
+async def posture_history(client_id: str, limit: int = Query(30, ge=1, le=90)):
+    from analytics.benchmarking import BenchmarkingEngine
+    engine = BenchmarkingEngine()
+    return await engine.get_posture_history(client_id, limit=limit)
+
+
+@router.get("/benchmarks/{industry}", summary="Industry benchmark statistics")
+async def industry_benchmark(industry: str):
+    from analytics.benchmarking import BenchmarkingEngine
+    engine = BenchmarkingEngine()
+    return await engine.get_industry_benchmark(industry)
+
+
+@router.get("/benchmarks", summary="All clients ranked by posture score")
+async def all_clients_ranking():
+    from analytics.benchmarking import BenchmarkingEngine
+    engine = BenchmarkingEngine()
+    return await engine.get_all_clients_ranking()
