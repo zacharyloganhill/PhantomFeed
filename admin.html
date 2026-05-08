@@ -179,6 +179,7 @@ function renderClientPanel() {
       <button class="tab" onclick="cTab('scanners')">Scanners</button>
       <button class="tab" onclick="cTab('siems')">SIEMs</button>
       <button class="tab" onclick="cTab('audit')">Audit Log</button>
+      <button class="tab" onclick="cTab('webhooks')">Webhooks</button>
     </div>
 
     <div id="cpane-assets" class="tab-pane active"></div>
@@ -188,12 +189,13 @@ function renderClientPanel() {
     <div id="cpane-scanners" class="tab-pane"></div>
     <div id="cpane-siems" class="tab-pane"></div>
     <div id="cpane-audit" class="tab-pane"></div>
+    <div id="cpane-webhooks" class="tab-pane"></div>
   `;
   loadAssetsTab();
 }
 
 function cTab(name) {
-  const tabs = ['assets','history','export','users','scanners','siems','audit'];
+  const tabs = ['assets','history','export','users','scanners','siems','audit','webhooks'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', tabs[i]===name));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('cpane-'+name).classList.add('active');
@@ -204,6 +206,7 @@ function cTab(name) {
   else if (name==='scanners') loadScannersTab();
   else if (name==='siems') loadSIEMsTab();
   else if (name==='audit') loadAuditTab();
+  else if (name==='webhooks') loadWebhooksTab();
 }
 
 // ── Assets tab ─────────────────────────────────────────────────────────────────
@@ -793,6 +796,135 @@ async function loadAuditTab() {
       </table>
     `;
   } catch(e) { el.innerHTML = '<div class="empty">Error loading audit log</div>'; }
+}
+
+// ── Webhooks tab ───────────────────────────────────────────────────────────────
+const WH_TYPES = {
+  generic:    {label: 'Generic HTTP',     urlHint: 'https://your-server.com/webhook', secretLabel: 'HMAC Secret (optional)'},
+  slack:      {label: 'Slack',            urlHint: 'https://hooks.slack.com/services/...', secretLabel: '— (not used for Slack)'},
+  splunk_hec: {label: 'Splunk HEC',       urlHint: 'https://splunk:8088/services/collector', secretLabel: 'HEC Token'},
+  sentinel:   {label: 'Microsoft Sentinel',urlHint: 'https://<workspace>.ods.opinsights.azure.com/...', secretLabel: 'Shared Key'},
+};
+
+async function loadWebhooksTab() {
+  const el = document.getElementById('cpane-webhooks');
+  if (!el || !selectedClient) return;
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/webhooks`, {
+      headers: {Authorization: 'Bearer ' + getToken()}
+    });
+    const data = r.ok ? await r.json() : {webhooks: []};
+    const whs  = data.webhooks || [];
+
+    const typeOpts = Object.entries(WH_TYPES).map(([k,v]) =>
+      `<option value="${k}">${v.label}</option>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="section-header">Active Webhooks (${whs.length})</div>
+      ${whs.length ? `
+        <table>
+          <thead><tr><th>Type</th><th>URL</th><th>Min Severity</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${whs.map(wh => `
+            <tr>
+              <td style="font-size:9px;font-weight:600;color:var(--teal)">${esc(WH_TYPES[wh.webhook_type]?.label || wh.webhook_type)}</td>
+              <td style="font-size:9px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(wh.url)}">${esc(wh.url)}</td>
+              <td style="font-size:9px">${esc(wh.min_severity || 'HIGH')}</td>
+              <td><span style="font-size:8px;color:${wh.is_active?'var(--green)':'var(--muted)'}">${wh.is_active?'ACTIVE':'PAUSED'}</span></td>
+              <td style="display:flex;gap:4px">
+                <button class="btn sm primary" onclick="testWebhook('${esc(wh.id)}')">TEST</button>
+                <button class="btn sm danger"  onclick="deleteWebhook('${esc(wh.id)}')">DELETE</button>
+              </td>
+            </tr>
+          `).join('')}
+          </tbody>
+        </table>
+      ` : '<div class="empty" style="margin-bottom:16px">No webhooks configured yet</div>'}
+
+      <div class="section-header">Add Webhook</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <label style="font-size:9px;color:var(--muted);display:block">Type
+          <select id="wh-type" class="finput" style="margin-top:4px;cursor:pointer" onchange="onWhTypeChange()">
+            ${typeOpts}
+          </select>
+        </label>
+        <label style="font-size:9px;color:var(--muted);display:block">Min Severity
+          <select id="wh-severity" class="finput" style="margin-top:4px;cursor:pointer">
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="HIGH" selected>HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+          </select>
+        </label>
+      </div>
+      <label style="font-size:9px;color:var(--muted);display:block;margin-bottom:10px">URL
+        <input id="wh-url" type="text" class="finput" style="margin-top:4px" placeholder="${esc(WH_TYPES.generic.urlHint)}">
+      </label>
+      <label style="font-size:9px;color:var(--muted);display:block;margin-bottom:10px">
+        <span id="wh-secret-label">HMAC Secret (optional)</span>
+        <input id="wh-secret" type="text" class="finput" style="margin-top:4px" placeholder="leave blank if not required">
+      </label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn primary" onclick="createWebhook()">+ ADD WEBHOOK</button>
+        <span id="wh-result" style="font-size:9px;color:var(--teal);display:none"></span>
+      </div>
+    `;
+  } catch(e) { el.innerHTML = '<div class="empty">Error loading webhooks</div>'; }
+}
+
+function onWhTypeChange() {
+  const type = document.getElementById('wh-type')?.value || 'generic';
+  const info = WH_TYPES[type] || WH_TYPES.generic;
+  const urlEl = document.getElementById('wh-url');
+  const lblEl = document.getElementById('wh-secret-label');
+  if (urlEl) urlEl.placeholder = info.urlHint;
+  if (lblEl) lblEl.textContent = info.secretLabel;
+}
+
+async function createWebhook() {
+  const type = document.getElementById('wh-type')?.value;
+  const url  = document.getElementById('wh-url')?.value.trim();
+  const sec  = document.getElementById('wh-secret')?.value.trim();
+  const sev  = document.getElementById('wh-severity')?.value;
+  if (!url) { toast('URL is required', 'error'); return; }
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/webhooks`, {
+      method: 'POST',
+      headers: {Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({webhook_type: type, url, secret: sec, min_severity: sev, categories: []}),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+    toast('Webhook created', 'success');
+    loadWebhooksTab();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function testWebhook(whId) {
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/webhooks/${whId}/test`, {
+      method: 'POST',
+      headers: {Authorization: 'Bearer ' + getToken()},
+    });
+    const d = await r.json();
+    if (r.ok && d.status !== 'error') {
+      toast('Test payload sent — check your webhook receiver', 'success');
+    } else {
+      toast('Test failed: ' + (d.status || JSON.stringify(d)), 'error');
+    }
+  } catch(e) { toast('Test error: ' + e.message, 'error'); }
+}
+
+async function deleteWebhook(whId) {
+  if (!confirm('Delete this webhook?')) return;
+  try {
+    const r = await fetch(`${API}/admin/clients/${selectedClient.id}/webhooks/${whId}`, {
+      method: 'DELETE',
+      headers: {Authorization: 'Bearer ' + getToken()},
+    });
+    if (!r.ok) throw new Error('Delete failed');
+    toast('Webhook deleted', 'success');
+    loadWebhooksTab();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 loadClients();
