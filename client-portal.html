@@ -170,6 +170,22 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .tt-gen-btn:disabled{opacity:.4;cursor:default}
 .tt-gen-status{font-size:8px;color:var(--muted);margin-top:6px;text-align:center;display:none}
 
+/* Risk portfolio */
+.risk-summary{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--border)}
+.risk-kpi{padding:10px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.risk-kpi:last-child{border-right:none}
+.risk-kpi-label{font-size:7px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.risk-kpi-val{font-size:14px;font-weight:700;color:var(--text)}
+.risk-kpi-val.exposure{color:var(--red)}
+.risk-kpi-val.roi{color:var(--green)}
+.risk-item-row{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+.risk-rank{font-size:9px;color:var(--muted);width:18px;flex-shrink:0;padding-top:1px}
+.risk-item-body{flex:1;min-width:0}
+.risk-item-title{font-size:9px;color:var(--text);margin-bottom:3px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.risk-item-meta{font-size:7px;color:var(--muted);display:flex;gap:7px;flex-wrap:wrap}
+.risk-item-loss{font-size:9px;font-weight:600;color:var(--red);flex-shrink:0;white-space:nowrap}
+.risk-roi-badge{font-size:7px;padding:1px 4px;border:1px solid rgba(61,214,140,.4);color:var(--green)}
+
 /* Skeleton */
 .skel{background:var(--bg3);animation:shim 1.4s ease-in-out infinite;border-radius:2px;display:inline-block}
 @keyframes shim{0%,100%{opacity:.3}50%{opacity:.8}}
@@ -233,6 +249,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
         <button class="tab-btn"    id="tabDark" onclick="switchTab('dark')">DARK WEB</button>
         <button class="tab-btn"    id="tabRem"  onclick="switchTab('rem')">REMEDIATION</button>
         <button class="tab-btn"    id="tabTT"   onclick="switchTab('tt')">TABLETOP</button>
+        <button class="tab-btn"    id="tabRisk" onclick="switchTab('risk')">RISK</button>
       </div>
       <div class="tab-content">
 
@@ -266,6 +283,31 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
           </div>
           <div id="remList">
             <div class="empty-feed"><div class="empty-ico">&#9650;</div><div>Loading remediations...</div></div>
+          </div>
+        </div>
+
+        <!-- Risk portfolio panel -->
+        <div id="panelRisk" style="display:none">
+          <div class="panel-hdr">
+            <span>FINANCIAL RISK EXPOSURE</span>
+            <span id="riskBadge" class="panel-badge" style="display:none"></span>
+          </div>
+          <div class="risk-summary">
+            <div class="risk-kpi">
+              <div class="risk-kpi-label">Total Exposure</div>
+              <div class="risk-kpi-val exposure" id="riskExposure">—</div>
+            </div>
+            <div class="risk-kpi">
+              <div class="risk-kpi-label">Rem. Cost</div>
+              <div class="risk-kpi-val" id="riskRemCost">—</div>
+            </div>
+            <div class="risk-kpi">
+              <div class="risk-kpi-label">Portfolio ROI</div>
+              <div class="risk-kpi-val roi" id="riskRoi">—</div>
+            </div>
+          </div>
+          <div id="riskItemsList">
+            <div class="empty-feed"><div class="empty-ico">&#9650;</div><div>Loading risk data…</div></div>
           </div>
         </div>
 
@@ -410,19 +452,22 @@ function buildExpand(item) {
 }
 
 // ── Tabs ─────────────────────────────────────────
-let ttLoaded = false;
+let ttLoaded   = false;
+let riskLoaded = false;
 function switchTab(tab) {
   const map = {
-    ksi:  ['panelKSI',  'tabKSI'],
-    dark: ['panelDark', 'tabDark'],
-    rem:  ['panelRem',  'tabRem'],
-    tt:   ['panelTT',   'tabTT'],
+    ksi:  ['panelKSI',   'tabKSI'],
+    dark: ['panelDark',  'tabDark'],
+    rem:  ['panelRem',   'tabRem'],
+    tt:   ['panelTT',    'tabTT'],
+    risk: ['panelRisk',  'tabRisk'],
   };
   Object.entries(map).forEach(([k, [panelId, btnId]]) => {
     document.getElementById(panelId).style.display = k === tab ? '' : 'none';
     document.getElementById(btnId).classList.toggle('on', k === tab);
   });
-  if (tab === 'tt' && !ttLoaded) { ttLoaded = true; loadTabletops(); }
+  if (tab === 'tt'   && !ttLoaded)   { ttLoaded   = true; loadTabletops(); }
+  if (tab === 'risk' && !riskLoaded) { riskLoaded  = true; loadRiskPortfolio(); }
 }
 
 // ── Summary (stat chips + client name) ────────────
@@ -444,7 +489,8 @@ async function loadSummary() {
       chip('High',         sev.HIGH     || 0,          'hi') +
       chip('KSI Pass',     pr != null ? pr + '%' : '—','te') +
       chip('Remediations', d.open_remediations || 0,   '') +
-      `<div class="stat-chip" id="dwChip"><div class="stat-label">DARK WEB</div><div class="stat-val pu" id="dwChipVal">—</div></div>`;
+      `<div class="stat-chip" id="dwChip"><div class="stat-label">DARK WEB</div><div class="stat-val pu" id="dwChipVal">—</div></div>` +
+      `<div class="stat-chip" id="riskChip" style="cursor:pointer" onclick="switchTab('risk')" title="Click for Risk Portfolio"><div class="stat-label">EXPOSURE</div><div class="stat-val cr" id="riskChipVal">—</div></div>`;
   } catch(e) {
     const nameEl = document.getElementById('clientName');
     nameEl.textContent = localStorage.getItem('display_name') || 'Client Portal';
@@ -595,6 +641,62 @@ async function loadRemediation() {
   }
 }
 
+// ── Risk Portfolio ────────────────────────────────
+function fmtMoney(n) {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return '$' + (n / 1_000).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+}
+
+async function loadRiskPortfolio() {
+  try {
+    const res = await fetch(`${API}/clients/${CLIENT_ID}/risk-portfolio`, {headers: authHdr()});
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+
+    document.getElementById('riskExposure').textContent = fmtMoney(d.total_expected_loss);
+    document.getElementById('riskRemCost').textContent  = fmtMoney(d.total_remediation_cost);
+    document.getElementById('riskRoi').textContent      = d.portfolio_roi ? d.portfolio_roi.toFixed(0) + '×' : '—';
+
+    const badge = document.getElementById('riskBadge');
+    if (d.total_expected_loss > 0) {
+      badge.style.display  = '';
+      badge.textContent    = fmtMoney(d.total_expected_loss) + ' EXPOSURE';
+      badge.className      = 'panel-badge';
+    }
+
+    const list  = document.getElementById('riskItemsList');
+    const items = d.top_items || [];
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-feed"><div class="empty-ico">&#9650;</div><div>No risk data — assign client industry in Admin</div></div>';
+      return;
+    }
+    list.innerHTML = items.map((item, i) => {
+      const sev = (item.severity || '').toUpperCase();
+      const sevColor = sev === 'CRITICAL' ? 'var(--red)' : sev === 'HIGH' ? 'var(--amber)' : sev === 'MEDIUM' ? 'var(--blue)' : 'var(--muted)';
+      return `<div class="risk-item-row">` +
+        `<span class="risk-rank">#${i + 1}</span>` +
+        `<div class="risk-item-body">` +
+          `<div class="risk-item-title">${esc(item.title || 'Unknown')}</div>` +
+          `<div class="risk-item-meta">` +
+            `<span style="color:${sevColor}">${esc(sev)}</span>` +
+            (item.probability ? `<span>${item.probability}% exploit prob.</span>` : '') +
+            (item.remediation_cost ? `<span>Rem: ${fmtMoney(item.remediation_cost)}</span>` : '') +
+          `</div>` +
+        `</div>` +
+        `<div style="text-align:right;flex-shrink:0">` +
+          `<div class="risk-item-loss">${fmtMoney(item.expected_loss)}</div>` +
+          (item.roi_ratio ? `<div class="risk-roi-badge">${item.roi_ratio}× ROI</div>` : '') +
+        `</div>` +
+        `</div>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('riskItemsList').innerHTML =
+      '<div class="empty-feed"><div class="empty-ico">&#9650;</div><div>Failed to load risk data</div></div>';
+  }
+}
+
 // ── Tabletop ──────────────────────────────────────
 const SCENARIO_TYPES = {
   ransomware:     'RANSOMWARE',
@@ -699,6 +801,13 @@ function downloadReport() {
   loadDarkWeb();
   loadRemediation();
   initTTTypeGrid();
+  // Populate exposure chip without loading full risk tab
+  fetch(`${API}/clients/${CLIENT_ID}/risk-portfolio`, {headers: authHdr()})
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      const el = document.getElementById('riskChipVal');
+      if (el && d && d.total_expected_loss) el.textContent = fmtMoney(d.total_expected_loss);
+    }).catch(() => {});
 })();
 </script>
 
