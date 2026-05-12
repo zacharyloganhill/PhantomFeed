@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from db import database as db
 
 router = APIRouter()
@@ -211,14 +211,16 @@ async def summary(
 # ── Posture & Benchmarking ──────────────────────────────────────────────────
 
 @router.get("/clients/{client_id}/posture", summary="Calculate posture score for a client")
-async def client_posture(client_id: str, _: dict = Depends(get_current_user)):
+async def client_posture(client_id: str, user: dict = Depends(get_current_user)):
+    require_client_access(user, client_id)
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.calculate_posture(client_id)
 
 
 @router.get("/clients/{client_id}/posture/history", summary="Posture score history")
-async def posture_history(client_id: str, limit: int = Query(30, ge=1, le=90), _: dict = Depends(get_current_user)):
+async def posture_history(client_id: str, limit: int = Query(30, ge=1, le=90), user: dict = Depends(get_current_user)):
+    require_client_access(user, client_id)
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.get_posture_history(client_id, limit=limit)
@@ -241,7 +243,8 @@ async def all_clients_ranking(_: dict = Depends(get_current_user)):
 # ── Breach Cost & ROI ──────────────────────────────────────────────────────
 
 @router.get("/clients/{client_id}/risk-portfolio", summary="Full breach cost and ROI analysis")
-async def risk_portfolio(client_id: str, _: dict = Depends(get_current_user)):
+async def risk_portfolio(client_id: str, user: dict = Depends(get_current_user)):
+    require_client_access(user, client_id)
     from analytics.breach_cost import get_client_risk_portfolio
     return await get_client_risk_portfolio(client_id)
 

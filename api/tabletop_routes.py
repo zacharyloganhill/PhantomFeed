@@ -3,13 +3,14 @@ PhantomFeed — Tabletop Exercise API Routes
 """
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from fastapi.responses import Response
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 
 router = APIRouter()
 
 
 @router.get("/clients/{client_id}/tabletops")
 async def list_tabletops(client_id: str, user: dict = Depends(get_current_user)):
+    require_client_access(user, client_id)
     from db import database as db
     exercises = await db.get_tabletops(client_id)
     return {"count": len(exercises), "exercises": exercises}
@@ -21,6 +22,7 @@ async def generate_tabletop(
     body: dict,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from reports.tabletop_generator import generate_tabletop_scenario
     scenario_type = body.get("scenario_type", "ransomware")
     custom_prompt = body.get("custom_prompt", "")
@@ -34,6 +36,7 @@ async def get_tabletop(
     exercise_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     ex = await db.get_tabletop(exercise_id)
     if not ex:
@@ -48,6 +51,7 @@ async def export_tabletop_pdf(
     exercise_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     from reports.tabletop_generator import export_tabletop_pdf
     ex = await db.get_tabletop(exercise_id)
@@ -78,6 +82,7 @@ async def export_tabletop_pptx(
     exercise_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     from reports.tabletop_generator import export_tabletop_pptx
     ex = await db.get_tabletop(exercise_id)

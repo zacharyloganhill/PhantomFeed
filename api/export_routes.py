@@ -24,7 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from auth.auth import decode_token
+from auth.auth import decode_token, require_client_access
 
 router = APIRouter()
 
@@ -324,6 +324,7 @@ async def _get_ioc_rows(days: int, ioc_type_filter: Optional[str]) -> list[dict]
 
 @router.get("/clients/{client_id}/export/remediation.csv")
 async def export_remediation_csv(client_id: str, user: dict = Depends(_require_auth)):
+    require_client_access(user, client_id)
     rows = await _get_remediation_rows(client_id)
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -361,6 +362,7 @@ async def export_remediation_csv(client_id: str, user: dict = Depends(_require_a
 
 @router.get("/clients/{client_id}/export/remediation.xlsx")
 async def export_remediation_xlsx(client_id: str, user: dict = Depends(_require_auth)):
+    require_client_access(user, client_id)
     import openpyxl
     from openpyxl.styles import PatternFill, Font
     from openpyxl.utils import get_column_letter
@@ -536,6 +538,7 @@ def _make_rules(item: dict) -> tuple[str, str, str]:
 
 @router.get("/clients/{client_id}/export/detection-rules.zip")
 async def export_detection_rules_zip(client_id: str, user: dict = Depends(_require_auth)):
+    require_client_access(user, client_id)
     from db import database as db
     items = await db.get_items(severity="CRITICAL,HIGH", client_id=client_id, limit=20)
     if not items:
@@ -606,6 +609,7 @@ async def client_report_html_preview(
 
 @router.post("/clients/{client_id}/export/push-rules-github")
 async def push_rules_github(client_id: str, body: dict, user: dict = Depends(_require_auth)):
+    require_client_access(user, client_id)
     """Push detection rules to a GitHub repo via the Contents API."""
     repo = body.get("repo", "")
     token = body.get("token", "")

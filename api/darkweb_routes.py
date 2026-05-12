@@ -3,7 +3,7 @@ PhantomFeed — Dark Web Alert API Routes
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 
 router = APIRouter()
 
@@ -15,6 +15,7 @@ async def list_darkweb_alerts(
     unacknowledged_only: bool = Query(False),
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     client = await db.get_client(client_id)
     if not client:
@@ -35,6 +36,7 @@ async def acknowledge_alert(
     alert_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     await db.acknowledge_darkweb_alert(alert_id)
     return {"acknowledged": True, "alert_id": alert_id}
@@ -45,6 +47,7 @@ async def trigger_darkweb_scan(
     client_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from ingest.darkweb import run_client_darkweb_scan
     result = await run_client_darkweb_scan(client_id)
     return result

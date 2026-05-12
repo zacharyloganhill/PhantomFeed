@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from compliance.ksi_definitions import KSI_DEFINITIONS
 from compliance.ksi_engine import KSIEngine
 
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/v1", tags=["ksi"])
 
 @router.get("/clients/{client_id}/ksi")
 async def get_ksi_results(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     """Latest KSI result for each of the 7 indicators."""
     results = await db.get_latest_ksi_results(client_id)
     passing = sum(1 for r in results if r["status"] == "pass")
@@ -44,6 +45,7 @@ async def get_ksi_results(client_id: str, user=Depends(get_current_user)):
 @router.get("/clients/{client_id}/ksi/{ksi_id}/history")
 async def get_ksi_history(client_id: str, ksi_id: str,
                            limit: int = 30, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     history = await db.get_ksi_history(client_id, ksi_id, limit=limit)
     return {"ksi_id": ksi_id, "history": history}
 
@@ -51,6 +53,7 @@ async def get_ksi_history(client_id: str, ksi_id: str,
 @router.post("/clients/{client_id}/ksi/validate")
 async def trigger_validation(client_id: str, background_tasks: BackgroundTasks,
                               user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     """Manually trigger KSI validation (runs in background)."""
     client = await db.get_client(client_id)
     if not client:

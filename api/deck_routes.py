@@ -16,7 +16,7 @@ async def _require_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ):
-    from auth.auth import decode_token
+    from auth.auth import decode_token, require_client_access
     from db import database as db
 
     token_str = None
@@ -45,6 +45,7 @@ async def download_deck(
     days: int = Query(30, ge=7, le=365),
     user: dict = Depends(_require_user),
 ):
+    require_client_access(user, client_id)
     """Generate and download the executive briefing deck as PPTX."""
     from reports.deck_generator import BriefingDeckGenerator
     gen = BriefingDeckGenerator()
@@ -64,6 +65,7 @@ async def deck_preview(
     days: int = Query(30, ge=7, le=365),
     user: dict = Depends(_require_user),
 ):
+    require_client_access(user, client_id)
     """Return slide outline JSON for preview without generating the file."""
     from reports.deck_generator import BriefingDeckGenerator
     gen = BriefingDeckGenerator()

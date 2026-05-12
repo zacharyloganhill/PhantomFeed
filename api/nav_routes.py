@@ -6,7 +6,7 @@ Powers the index.html mission control page.
 import logging
 from fastapi import APIRouter, Depends
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Navigation"])
@@ -67,6 +67,7 @@ async def ksi_summary(user=Depends(get_current_user)):
 
 @router.get("/clients/{client_id}/security-summary", summary="Per-client security posture summary")
 async def client_metrics(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     client = await db.get_client(client_id)
     if not client:
         from fastapi import HTTPException

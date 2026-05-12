@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from db import database as db
 from reports.sla_engine import SLAEngine, calculate_mttr, get_sla_compliance_rate
 
@@ -34,6 +34,7 @@ async def list_remediations(
     status: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     rems = await db.get_remediations(client_id, status=status)
     today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     for r in rems:
@@ -53,6 +54,7 @@ async def create_remediation(
     req: RemediationCreate,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -82,6 +84,7 @@ async def update_remediation(
     req: RemediationUpdate,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     if req.status and req.status not in VALID_STATUSES:
         raise HTTPException(status_code=422, detail=f"Invalid status. Must be one of: {VALID_STATUSES}")
 
@@ -98,6 +101,7 @@ async def client_metrics(
     days: int = Query(90, ge=7, le=365),
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")

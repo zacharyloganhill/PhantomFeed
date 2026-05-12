@@ -68,6 +68,12 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+def require_client_access(user: dict, client_id: str) -> None:
+    """Raise 403 if a non-admin user tries to access another client's data."""
+    if user.get("role") != "admin" and user.get("client_id") != client_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
 async def seed_admin_user():
     """Create the admin user if it doesn't already exist."""
     from db import database as db

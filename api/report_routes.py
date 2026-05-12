@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from auth.auth import decode_token
+from auth.auth import decode_token, require_client_access
 import db.database as db
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ async def generate_pdf_report(
     client_id: str,
     user: dict = Depends(_get_user_from_token_or_header),
 ):
+    require_client_access(user, client_id)
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(404, "Client not found")

@@ -2,13 +2,14 @@
 PhantomFeed — CMMC 2.0 Assessment API Routes
 """
 from fastapi import APIRouter, Depends, Query
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 
 router = APIRouter()
 
 
 @router.get("/clients/{client_id}/cmmc/assessment")
 async def get_cmmc_assessment(client_id: str, user: dict = Depends(get_current_user)):
+    require_client_access(user, client_id)
     from compliance.cmmc_assessor import CMMCAssessor
     return await CMMCAssessor().get_assessment(client_id)
 
@@ -20,6 +21,7 @@ async def update_practice(
     body: dict,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from compliance.cmmc_assessor import CMMCAssessor
     return await CMMCAssessor().update_practice(
         client_id, practice_id,
@@ -34,6 +36,7 @@ async def bulk_update_practices(
     body: dict,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from compliance.cmmc_assessor import CMMCAssessor
     updates = body.get("updates", [])
     return await CMMCAssessor().bulk_update(client_id, updates)

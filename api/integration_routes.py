@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from security.encryption import encrypt
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ class SIEMTestRequest(BaseModel):
 @router.post("/clients/{client_id}/scanners/test", summary="Test scanner credentials before saving")
 async def test_scanner_connection(client_id: str, body: ScannerTestRequest,
                                    user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     """
     Attempt a live connection with provided credentials (not yet saved).
     Returns auth status, discovered counts, and sample field names.
@@ -120,6 +121,7 @@ async def test_scanner_connection(client_id: str, body: ScannerTestRequest,
 @router.post("/clients/{client_id}/siems/test", summary="Test SIEM credentials and run sample query")
 async def test_siem_connection(client_id: str, body: SIEMTestRequest,
                                 user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     host = body.host_url or ""
     if body.port and body.port not in (80, 443) and host and ":" not in host.split("/")[-1]:
         host = f"{host}:{body.port}"
@@ -184,6 +186,7 @@ async def test_siem_connection(client_id: str, body: SIEMTestRequest,
             summary="Last 10 pull records for a scanner")
 async def scanner_pull_history(client_id: str, scanner_id: str,
                                 user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_scanner_config(scanner_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "Scanner not found")
@@ -195,6 +198,7 @@ async def scanner_pull_history(client_id: str, scanner_id: str,
             summary="Last 10 pull records for a SIEM")
 async def siem_pull_history(client_id: str, siem_id: str,
                              user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_siem_config(siem_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "SIEM not found")

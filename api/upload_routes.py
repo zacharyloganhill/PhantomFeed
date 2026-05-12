@@ -73,7 +73,7 @@ async def _cleanup_old_temp():
     for fname in os.listdir(TEMP_DIR):
         fpath = os.path.join(TEMP_DIR, fname)
         try:
-            mtime = datetime.utcfromtimestamp(os.path.getmtime(fpath))
+            mtime = datetime.fromtimestamp(os.path.getmtime(fpath), tz=timezone.utc).replace(tzinfo=None)
             if mtime < cutoff:
                 os.remove(fpath)
         except OSError:

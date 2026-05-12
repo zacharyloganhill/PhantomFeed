@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from security.encryption import encrypt
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ def _mask(config: dict) -> dict:
 
 @router.get("/clients/{client_id}/siems")
 async def list_siems(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     configs = await db.get_siem_configs(client_id)
     return {"siems": [_mask(c) for c in configs]}
 
@@ -61,6 +62,7 @@ async def list_siems(client_id: str, user=Depends(get_current_user)):
 async def create_siem(client_id: str, body: SIEMCreate,
                       background_tasks: BackgroundTasks,
                       user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     if body.siem_type not in SUPPORTED_TYPES:
         raise HTTPException(400, f"Unsupported SIEM type. Must be one of: {SUPPORTED_TYPES}")
     client = await db.get_client(client_id)
@@ -85,6 +87,7 @@ async def create_siem(client_id: str, body: SIEMCreate,
 
 @router.get("/clients/{client_id}/siems/{siem_id}")
 async def get_siem(client_id: str, siem_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_siem_config(siem_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "SIEM not found")
@@ -94,6 +97,7 @@ async def get_siem(client_id: str, siem_id: str, user=Depends(get_current_user))
 @router.patch("/clients/{client_id}/siems/{siem_id}")
 async def update_siem(client_id: str, siem_id: str, body: SIEMUpdate,
                        user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_siem_config(siem_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "SIEM not found")
@@ -122,6 +126,7 @@ async def update_siem(client_id: str, siem_id: str, body: SIEMUpdate,
 
 @router.delete("/clients/{client_id}/siems/{siem_id}", status_code=204)
 async def delete_siem(client_id: str, siem_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_siem_config(siem_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "SIEM not found")

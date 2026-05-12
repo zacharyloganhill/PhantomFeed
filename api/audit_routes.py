@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from db.audit_log import get_audit_events, count_audit_events, events_to_csv
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ async def list_client_audit(
     offset: int = 0,
     user=Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     events = await get_audit_events(
         client_id=client_id, event_type=event_type, limit=limit, offset=offset
     )
@@ -72,6 +73,7 @@ async def export_client_audit_csv(
     token: Optional[str] = Query(None),
     user=Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     events = await get_audit_events(client_id=client_id, limit=limit)
     csv_data = events_to_csv(events)
     return Response(

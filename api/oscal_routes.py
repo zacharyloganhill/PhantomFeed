@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from compliance.oscal.generator import OSCALGenerator
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ async def _require_user(token: Optional[str] = Query(None),
 
 @router.get("/clients/{client_id}/oscal/poam.xml")
 async def export_poam(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
     xml_bytes = await gen.generate_poam()
@@ -36,6 +37,7 @@ async def export_poam(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/sar.xml")
 async def export_sar(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
     xml_bytes = await gen.generate_sar()
@@ -48,6 +50,7 @@ async def export_sar(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/vdr.json")
 async def export_vdr(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
     json_bytes = await gen.generate_vdr()
@@ -60,6 +63,7 @@ async def export_vdr(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/oar.json")
 async def export_oar(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
     json_bytes = await gen.generate_oar()
@@ -72,6 +76,7 @@ async def export_oar(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/ssp.xml")
 async def export_ssp(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
     xml_bytes = await gen.generate_ssp()
@@ -84,6 +89,7 @@ async def export_ssp(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/bundle.zip")
 async def export_bundle(client_id: str, user=Depends(_require_user)):
+    require_client_access(user, client_id)
     """Download all 5 OSCAL documents as a ZIP archive."""
     client = await _get_client_or_404(client_id)
     gen = OSCALGenerator(client)
@@ -97,6 +103,7 @@ async def export_bundle(client_id: str, user=Depends(_require_user)):
 
 @router.get("/clients/{client_id}/oscal/summary")
 async def oscal_summary(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     """Return document availability metadata for the FedRAMP dashboard."""
     client = await _get_client_or_404(client_id)
     counts = await db.count_scan_findings_by_severity(client_id)

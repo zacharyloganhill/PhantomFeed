@@ -3,7 +3,7 @@ PhantomFeed — Threat Actor Dossier API Routes
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 
 router = APIRouter()
 
@@ -63,6 +63,7 @@ async def get_client_actor_alerts(
     client_id: str,
     user: dict = Depends(get_current_user),
 ):
+    require_client_access(user, client_id)
     from db import database as db
     client = await db.get_client(client_id)
     if not client:

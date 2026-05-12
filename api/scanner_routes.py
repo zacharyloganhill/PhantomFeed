@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 import db.database as db
-from auth.auth import get_current_user
+from auth.auth import get_current_user, require_client_access
 from security.encryption import encrypt
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ def _mask(config: dict) -> dict:
 
 @router.get("/clients/{client_id}/scanners")
 async def list_scanners(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     configs = await db.get_scanner_configs(client_id)
     return {"scanners": [_mask(c) for c in configs]}
 
@@ -67,6 +68,7 @@ async def list_scanners(client_id: str, user=Depends(get_current_user)):
 async def create_scanner(client_id: str, body: ScannerCreate,
                           background_tasks: BackgroundTasks,
                           user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     if body.scanner_type not in SUPPORTED_TYPES:
         raise HTTPException(400, f"Unsupported scanner type. Must be one of: {SUPPORTED_TYPES}")
     client = await db.get_client(client_id)
@@ -96,6 +98,7 @@ async def create_scanner(client_id: str, body: ScannerCreate,
 
 @router.get("/clients/{client_id}/scanners/{scanner_id}")
 async def get_scanner(client_id: str, scanner_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_scanner_config(scanner_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "Scanner not found")
@@ -105,6 +108,7 @@ async def get_scanner(client_id: str, scanner_id: str, user=Depends(get_current_
 @router.patch("/clients/{client_id}/scanners/{scanner_id}")
 async def update_scanner(client_id: str, scanner_id: str, body: ScannerUpdate,
                           user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_scanner_config(scanner_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "Scanner not found")
@@ -133,6 +137,7 @@ async def update_scanner(client_id: str, scanner_id: str, body: ScannerUpdate,
 
 @router.delete("/clients/{client_id}/scanners/{scanner_id}", status_code=204)
 async def delete_scanner(client_id: str, scanner_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     config = await db.get_scanner_config(scanner_id)
     if not config or config["client_id"] != client_id:
         raise HTTPException(404, "Scanner not found")
@@ -143,6 +148,7 @@ async def delete_scanner(client_id: str, scanner_id: str, user=Depends(get_curre
 async def trigger_poll(client_id: str, scanner_id: str,
                         background_tasks: BackgroundTasks,
                         user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     """Manually trigger a scanner poll in the background."""
     config = await db.get_scanner_config(scanner_id)
     if not config or config["client_id"] != client_id:
@@ -155,6 +161,7 @@ async def trigger_poll(client_id: str, scanner_id: str,
 async def list_findings(client_id: str, scanner_id: Optional[str] = None,
                          severity: Optional[str] = None, limit: int = 200,
                          user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     findings = await db.get_scan_findings(client_id, scanner_id=scanner_id,
                                            severity=severity, limit=limit)
     counts = await db.count_scan_findings_by_severity(client_id)
@@ -163,6 +170,7 @@ async def list_findings(client_id: str, scanner_id: Optional[str] = None,
 
 @router.get("/clients/{client_id}/scan-findings/summary")
 async def findings_summary(client_id: str, user=Depends(get_current_user)):
+    require_client_access(user, client_id)
     counts = await db.count_scan_findings_by_severity(client_id)
     scanners = await db.get_scanner_configs(client_id)
     return {
