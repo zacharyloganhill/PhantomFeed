@@ -718,7 +718,7 @@ function toast(msg, type='info', dur=3000) {
 // ── Status bar ────────────────────────────────────────────────────────────────
 async function checkStatus() {
   try {
-    const r = await fetch(API+'/items?limit=1');
+    const r = await fetch(API+'/items?limit=1', {headers:{'Authorization':'Bearer '+getToken()}});
     if (r.ok) {
       document.getElementById('sb-dot').style.background='var(--green)';
       document.getElementById('sb-status').textContent='● CONNECTED';

@@ -704,7 +704,7 @@ async function lookupIOC(){
   if(!val||!el)return;
   el.innerHTML='<span style="color:var(--muted)">Enriching...</span>';
   try{
-    const r=await fetch(API+'/ioc/lookup?value='+encodeURIComponent(val));
+    const r=await fetch(API+'/ioc/lookup?value='+encodeURIComponent(val),{headers:{'Authorization':'Bearer '+getToken()}});
     if(!r.ok){el.innerHTML='<span style="color:var(--red)">'+e(await r.text())+'</span>';return;}
     const d=await r.json();
     const lines=[];
@@ -736,7 +736,7 @@ async function loadIOCCache(){
   if(!el)return;
   el.innerHTML='<span style="color:var(--muted);font-size:9px">Loading...</span>';
   try{
-    const r=await fetch(API+'/ioc/cache?limit=20');
+    const r=await fetch(API+'/ioc/cache?limit=20',{headers:{'Authorization':'Bearer '+getToken()}});
     if(!r.ok)throw new Error();
     const d=await r.json();
     const entries=d.entries||[];
