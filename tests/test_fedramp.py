@@ -551,3 +551,86 @@ async def test_user_update_and_delete(tmp_path):
         assert await database.delete_user("nonexistent-id") is False
     finally:
         await database.close()
+
+
+# ── New session scope-enforcement tests ──────────────────────────────────────
+
+def test_analytics_scope_admin_passthrough():
+    """Admin users can pass any client_id to analytics endpoints."""
+    from api.analytics_routes import _scope_client_id
+    admin = {"role": "admin", "client_id": None}
+    assert _scope_client_id(admin, "other-client") == "other-client"
+    assert _scope_client_id(admin, None) is None
+
+
+def test_analytics_scope_non_admin_own_client():
+    """Non-admin with matching client_id is allowed."""
+    from api.analytics_routes import _scope_client_id
+    user = {"role": "analyst", "client_id": "my-client"}
+    assert _scope_client_id(user, "my-client") == "my-client"
+    assert _scope_client_id(user, None) is None
+
+
+def test_analytics_scope_non_admin_wrong_client_raises():
+    """Non-admin requesting another client's analytics gets 403."""
+    from fastapi import HTTPException
+    from api.analytics_routes import _scope_client_id
+    user = {"role": "analyst", "client_id": "my-client"}
+    try:
+        _scope_client_id(user, "other-client")
+        assert False, "Expected HTTPException 403"
+    except HTTPException as e:
+        assert e.status_code == 403
+
+
+def test_audit_scope_admin_passthrough():
+    """Admin users can request any client's audit events."""
+    from api.audit_routes import _enforce_audit_scope
+    admin = {"role": "admin", "client_id": None}
+    assert _enforce_audit_scope(admin, "other-client") == "other-client"
+    assert _enforce_audit_scope(admin, None) is None
+
+
+def test_audit_scope_non_admin_own_client():
+    """Non-admin gets scoped to their own client_id automatically."""
+    from api.audit_routes import _enforce_audit_scope
+    user = {"role": "analyst", "client_id": "my-client"}
+    assert _enforce_audit_scope(user, None) == "my-client"
+    assert _enforce_audit_scope(user, "my-client") == "my-client"
+
+
+def test_audit_scope_non_admin_wrong_client_raises():
+    """Non-admin requesting another client's audit gets 403."""
+    from fastapi import HTTPException
+    from api.audit_routes import _enforce_audit_scope
+    user = {"role": "analyst", "client_id": "my-client"}
+    try:
+        _enforce_audit_scope(user, "other-client")
+        assert False, "Expected HTTPException 403"
+    except HTTPException as e:
+        assert e.status_code == 403
+
+
+def test_upload_size_limit():
+    """Files over 50 MB are rejected with HTTP 413."""
+    from fastapi import HTTPException
+    from api.upload_routes import _check_size, MAX_UPLOAD_BYTES
+    _check_size(b"x" * MAX_UPLOAD_BYTES)  # exactly at limit — must not raise
+    try:
+        _check_size(b"x" * (MAX_UPLOAD_BYTES + 1))
+        assert False, "Expected HTTPException 413"
+    except HTTPException as e:
+        assert e.status_code == 413
+
+
+def test_pydantic_user_create_password_length():
+    """UserCreate rejects passwords shorter than 8 chars."""
+    from pydantic import ValidationError
+    from api.admin_routes import UserCreate
+    try:
+        UserCreate(username="testuser", password="short")
+        assert False, "Expected ValidationError"
+    except ValidationError:
+        pass
+    # Valid password should not raise
+    UserCreate(username="testuser", password="longpassword123")
