@@ -650,10 +650,18 @@ async function loadUsersTab() {
     el.innerHTML = `
       <div class="section-header">Users</div>
       <table>
-        <thead><tr><th>Username</th><th>Role</th><th>Created</th></tr></thead>
+        <thead><tr><th>Username</th><th>Role</th><th>Created</th><th style="width:130px"></th></tr></thead>
         <tbody>${users.length ? users.map(u=>`
-          <tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${(u.created_at||'').slice(0,10)}</td></tr>
-        `).join('') : '<tr><td colspan="3" class="empty">No users for this client</td></tr>'}
+          <tr>
+            <td>${esc(u.username)}</td>
+            <td>${esc(u.role)}</td>
+            <td>${(u.created_at||'').slice(0,10)}</td>
+            <td style="white-space:nowrap">
+              <button onclick="resetPassword('${esc(u.id)}','${esc(u.username)}')" style="font-size:8px;padding:2px 7px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;margin-right:4px">Reset PW</button>
+              <button onclick="deleteUser('${esc(u.id)}','${esc(u.username)}')" style="font-size:8px;padding:2px 7px;border:1px solid #c0392b44;background:transparent;color:#e74c3c;cursor:pointer">Delete</button>
+            </td>
+          </tr>
+        `).join('') : '<tr><td colspan="4" class="empty">No users for this client</td></tr>'}
         </tbody>
       </table>
       <div style="margin-top:16px;border:1px solid var(--border);padding:14px">
@@ -700,6 +708,33 @@ async function createClientUser() {
     res.style.display = 'block';
     res.innerHTML = `<span style="color:var(--teal)">${esc(creds)}</span>&nbsp;&nbsp;<button onclick="navigator.clipboard?.writeText('${username} / ${password}').then(()=>this.textContent='✓ Copied!');setTimeout(()=>this.textContent='Copy',2000)" style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">Copy</button><br><span style="font-size:8px;color:var(--muted)">Password shown once — not stored in plaintext</span>`;
     toast('User created', 'success');
+    loadUsersTab();
+  } catch(e) { toast('Error: '+e.message, 'error'); }
+}
+
+async function resetPassword(userId, username) {
+  const newPw = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,6).toUpperCase();
+  if (!confirm(`Reset password for ${username}?\n\nNew password: ${newPw}\n\nSave this — it will not be shown again.`)) return;
+  try {
+    const r = await fetch(`${API}/admin/users/${userId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+      body: JSON.stringify({password: newPw}),
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail || 'Error'); }
+    toast(`Password reset. New password: ${newPw}`, 'success');
+  } catch(e) { toast('Error: '+e.message, 'error'); }
+}
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+  try {
+    const r = await fetch(`${API}/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: {'Authorization':'Bearer '+getToken()},
+    });
+    if (!r.ok && r.status !== 204) { const d = await r.json(); throw new Error(d.detail || 'Error'); }
+    toast('User deleted', 'success');
     loadUsersTab();
   } catch(e) { toast('Error: '+e.message, 'error'); }
 }

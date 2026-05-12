@@ -28,6 +28,11 @@ class ClientUpdate(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
+
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = None
+    role: Optional[str] = None
     role: str = "analyst"
     client_id: Optional[str] = None
 
@@ -112,6 +117,37 @@ async def create_user(req: UserCreate, _: dict = Depends(require_admin)):
         client_id=req.client_id,
     )
     return {k: v for k, v in user.items() if k != "password_hash"}
+
+
+@router.patch("/users/{user_id}", summary="Update a user (reset password or change role)")
+async def update_user(user_id: str, req: UserUpdate, _: dict = Depends(require_admin)):
+    from auth.auth import hash_password
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("username") == "admin" and req.role and req.role != "admin":
+        raise HTTPException(status_code=400, detail="Cannot demote the built-in admin user")
+    updates = {}
+    if req.password:
+        updates["password_hash"] = hash_password(req.password)
+    if req.role:
+        updates["role"] = req.role
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    updated = await db.update_user(user_id, **updates)
+    return {k: v for k, v in updated.items() if k != "password_hash"}
+
+
+@router.delete("/users/{user_id}", status_code=204, summary="Delete a user")
+async def delete_user(user_id: str, _: dict = Depends(require_admin)):
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("username") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete the built-in admin user")
+    deleted = await db.delete_user(user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

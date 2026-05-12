@@ -846,6 +846,33 @@ async def get_user_by_id(user_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def update_user(user_id: str, **kwargs) -> Optional[dict]:
+    db = get_db()
+    allowed = {"password_hash", "role"}
+    sets, params = [], []
+    for k, v in kwargs.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            params.append(v)
+    if not sets:
+        return await get_user_by_id(user_id)
+    params.append(user_id)
+    await db.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", params)
+    await db.commit()
+    return await get_user_by_id(user_id)
+
+
+async def delete_user(user_id: str) -> bool:
+    db = get_db()
+    async with db.execute("SELECT id FROM users WHERE id = ?", (user_id,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return False
+    await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    await db.commit()
+    return True
+
+
 # ── Asset CRUD ────────────────────────────────────────────────────────────────
 
 async def upsert_asset(client_id: str, software: str, version: str = "",
