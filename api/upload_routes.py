@@ -20,12 +20,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
-from auth.auth import get_current_user
+from auth.auth import get_current_user, decode_token
 
 TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -556,8 +556,22 @@ TEMPLATES = {
 }
 
 
+async def _auth_token_or_header(request: Request, token: Optional[str] = Query(None)) -> dict:
+    raw = token
+    if not raw:
+        h = request.headers.get("Authorization", "")
+        if h.startswith("Bearer "):
+            raw = h[7:]
+    if not raw:
+        raise HTTPException(401, "Not authenticated")
+    payload = decode_token(raw)
+    if not payload.get("sub"):
+        raise HTTPException(401, "Invalid token")
+    return payload
+
+
 @router.get("/upload/templates/{template_type}")
-async def download_template(template_type: str, _: dict = Depends(get_current_user)):
+async def download_template(template_type: str, _: dict = Depends(_auth_token_or_header)):
     tmpl = TEMPLATES.get(template_type)
     if not tmpl:
         raise HTTPException(404, f"Unknown template type '{template_type}'. Choose: {', '.join(TEMPLATES)}")

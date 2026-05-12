@@ -3,12 +3,36 @@
 import csv
 import io
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from auth.auth import require_admin
+from auth.auth import require_admin, decode_token
 from db import database as db
+
+
+async def _require_admin_token_or_header(
+    request: Request,
+    token: Optional[str] = Query(None),
+) -> dict:
+    """Accept JWT from ?token= query param or Authorization: Bearer header, require admin role."""
+    raw = token
+    if not raw:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            raw = auth_header[7:]
+    if not raw:
+        raise HTTPException(401, "Not authenticated")
+    payload = decode_token(raw)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "User not found")
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
+    return user
 
 router = APIRouter()
 
@@ -175,7 +199,7 @@ async def client_report_html(
 async def client_report_pdf(
     client_id: str,
     days: int = Query(7, ge=1, le=365),
-    _: dict = Depends(require_admin),
+    _: dict = Depends(_require_admin_token_or_header),
 ):
     from reports.pdf_generator import generate_client_report, _get_report_extras
     client = await db.get_client(client_id)
@@ -209,7 +233,7 @@ async def send_digest(
 # ── Assets ────────────────────────────────────────────────────────────────────
 
 @router.get("/clients/{client_id}/assets", summary="List client assets")
-async def list_assets(client_id: str, _: dict = Depends(require_admin)):
+async def list_assets(client_id: str, _: dict = Depends(_require_admin_token_or_header)):
     client = await db.get_client(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")

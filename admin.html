@@ -393,11 +393,11 @@ async function deleteAsset(assetId) {
 }
 
 function downloadAssetTemplate() {
-  window.open(`${API}/upload/templates/assets`, '_blank');
+  window.open(`${API}/upload/templates/assets?token=${encodeURIComponent(getToken())}`, '_blank');
 }
 
 function exportAssets() {
-  window.open(`${API}/admin/clients/${selectedClient.id}/assets`, '_blank');
+  window.open(`${API}/admin/clients/${selectedClient.id}/assets?token=${encodeURIComponent(getToken())}`, '_blank');
 }
 
 async function runMatching() {
@@ -452,7 +452,7 @@ function renderExportTab() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
         <span style="flex:1;font-size:10px">Asset List</span>
         <span style="font-size:9px;color:var(--muted)">CSV of all imported assets</span>
-        <button class="btn sm" onclick="window.open('${API}/admin/clients/${id}/assets','_blank')">⬇ JSON</button>
+        <button class="btn sm" onclick="window.open('${API}/admin/clients/${id}/assets?token='+getToken(),'_blank')">⬇ JSON</button>
       </div>
       <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)">
         <span style="flex:1;font-size:10px">Remediation Tracker</span>

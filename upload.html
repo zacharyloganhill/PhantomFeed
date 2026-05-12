@@ -1001,7 +1001,7 @@ function cancelUpload() {
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 function downloadTemplate(type) {
-  window.open(`${API}/upload/templates/${type}`, '_blank');
+  window.open(`${API}/upload/templates/${type}?token=${encodeURIComponent(getToken())}`, '_blank');
 }
 
 // ── Export helpers ────────────────────────────────────────────────────────────
@@ -1037,7 +1037,7 @@ function downloadReport(fmt) {
   const days = document.getElementById('rpt-days').value;
   if (!clientId) { toast('Please select a client', 'error'); return; }
   if (fmt === 'pdf') {
-    window.open(`${API}/admin/clients/${clientId}/report.pdf?days=${days}`, '_blank');
+    window.open(`${API}/admin/clients/${clientId}/report.pdf?days=${days}&token=${encodeURIComponent(getToken())}`, '_blank');
   } else {
     window.open(`${API}/clients/${clientId}/report.html?days=${days}&token=${encodeURIComponent(getToken())}`, '_blank');
   }
