@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -90,7 +90,7 @@ def _slack_blocks(item: dict) -> dict:
 
 def _splunk_payload(item: dict) -> dict:
     return {
-        "time": datetime.utcnow().timestamp(),
+        "time": datetime.now(timezone.utc).replace(tzinfo=None).timestamp(),
         "sourcetype": "phantomfeed:threat",
         "source": "PhantomFeed",
         "event": _item_payload(item),
@@ -133,7 +133,7 @@ class WebhookDispatcher:
                 result = await self._fire(wh, item)
                 # Update last_fired
                 from db import database as db
-                await db.update_webhook(wh["id"], last_fired=datetime.utcnow().isoformat())
+                await db.update_webhook(wh["id"], last_fired=datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
                 return result
             except Exception as exc:
                 if attempt < 2:
@@ -163,7 +163,7 @@ class WebhookDispatcher:
         elif wtype == "sentinel":
             payload = _item_payload(item)
             body = json.dumps([payload])
-            date = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+            date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%a, %d %b %Y %H:%M:%S GMT")
             headers["x-ms-date"] = date
             headers["Log-Type"] = "PhantomFeed"
             workspace_key = wh.get("secret", "")
@@ -185,7 +185,7 @@ class WebhookDispatcher:
             database = db_mod.get_db()
             await database.execute(
                 "INSERT INTO webhook_errors (id, webhook_id, error, created_at) VALUES (?,?,?,?)",
-                (str(uuid.uuid4()), webhook_id, error[:500], datetime.utcnow().isoformat()),
+                (str(uuid.uuid4()), webhook_id, error[:500], datetime.now(timezone.utc).replace(tzinfo=None).isoformat()),
             )
             await database.commit()
         except Exception:

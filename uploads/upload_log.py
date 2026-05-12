@@ -5,7 +5,7 @@ DB table and CRUD for tracking file upload history.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 CREATE_UPLOAD_LOG = """
@@ -38,7 +38,7 @@ async def create_upload_log(
     from db.database import get_db
     db = get_db()
     uid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO upload_log
            (id, filename, file_type, client_id, status, uploaded_at)
@@ -81,7 +81,7 @@ async def update_upload_log(
     if error_message is not None:
         fields.append("error_message=?"); vals.append(error_message[:1000])
     if completed:
-        fields.append("completed_at=?"); vals.append(datetime.utcnow().isoformat())
+        fields.append("completed_at=?"); vals.append(datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
     if not fields:
         return await get_upload_log(upload_id)
     vals.append(upload_id)

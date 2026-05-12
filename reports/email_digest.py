@@ -7,7 +7,7 @@ Uses SMTP with TLS (STARTTLS). Falls back gracefully if SMTP is not configured.
 
 import smtplib
 import ssl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -24,11 +24,11 @@ SEVERITY_COLORS = {
 
 
 def _build_html(client: dict, items: list[dict], days: int) -> str:
-    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
     recent = [i for i in items if (i.get("published_at") or "") >= cutoff]
     critical = [i for i in recent if i.get("severity") == "CRITICAL"]
     high = [i for i in recent if i.get("severity") == "HIGH"]
-    report_date = datetime.utcnow().strftime("%B %d, %Y")
+    report_date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%B %d, %Y")
 
     def item_row(item: dict, idx: int) -> str:
         sev = item.get("severity", "INFO")
@@ -112,7 +112,7 @@ async def send_client_digest(client: dict, items: list[dict], days: int = 7) -> 
         return {"status": "error", "detail": "Client has no contact_email set"}
 
     html_body = _build_html(client, items, days)
-    report_date = datetime.utcnow().strftime("%B %d, %Y")
+    report_date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%B %d, %Y")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"PhantomFeed Digest — {client.get('name','Client')} — {report_date}"

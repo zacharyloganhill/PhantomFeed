@@ -1,6 +1,6 @@
 """PhantomFeed — Analytics API Routes"""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Query
 from db import database as db
@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 def _cutoff(days: int) -> str:
-    return (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    return (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
 @router.get("/analytics/trend", summary="Daily item counts by severity for trend chart")

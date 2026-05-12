@@ -8,7 +8,7 @@ Score formula (0–100):
   Open criticals   20 pts  (inverted: 0 open crit = 20 pts)
   Patch velocity   20 pts  (items patched in last 30d vs total open)
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -99,7 +99,7 @@ class BenchmarkingEngine:
         remediations = await db.get_remediations(client_id)
         items = await db.get_items(limit=500, sort="risk", client_id=client_id)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         thirty_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d")
 
         # ── SLA compliance score (30 pts) ──────────────────────────────────

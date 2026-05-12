@@ -3,7 +3,7 @@ PhantomFeed — MISP Integration
 Pull from configured MISP instance, push new CRITICAL items back.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -45,7 +45,7 @@ async def pull_misp_events(days: int = 1) -> int:
     from db import database as db
     from compliance.mappings import tag_item
 
-    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
     params = {
         "returnFormat": "json",
         "limit": 100,
@@ -99,7 +99,7 @@ async def pull_misp_events(days: int = 1) -> int:
                 ioc_values.append(val)
 
         severity = _severity_from_threat_level(int(event.get("threat_level_id", 3)))
-        published_date = event.get("date", datetime.utcnow().strftime("%Y-%m-%d"))
+        published_date = event.get("date", datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"))
 
         item = {
             "feed_id": "misp_pull",

@@ -10,7 +10,7 @@ Entry point:
 """
 
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -68,10 +68,10 @@ async def _get_report_extras(client_id: str, days: int) -> dict:
     extras = {"remediations": [], "exposures": [], "iocs": []}
     try:
         from db import database as db
-        from datetime import timedelta
+        from datetime import timedelta, timezone
         extras["remediations"] = await db.get_remediations(client_id)
         extras["iocs"] = await db.list_ioc_cache(limit=200)
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).isoformat()
         extras["iocs"] = [r for r in extras["iocs"] if (r.get("enriched_at") or "") >= cutoff]
     except Exception:
         pass
@@ -80,7 +80,7 @@ async def _get_report_extras(client_id: str, days: int) -> dict:
 
 def generate_client_report_html(client: dict, items: list[dict], days: int = 7,
                                   extras: dict = None) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d")
     report_date = now.strftime("%B %d, %Y %H:%M UTC")
 
@@ -139,12 +139,12 @@ def generate_client_report_html(client: dict, items: list[dict], days: int = 7,
 
     # Remediation tracker table
     if rems:
-        from datetime import timedelta as _td
+        from datetime import timedelta as _td, timezone
         def _dr(due):
             if not due: return ""
             try:
                 d = datetime.strptime(due[:10], "%Y-%m-%d")
-                dr = (d - datetime.utcnow()).days
+                dr = (d - datetime.now(timezone.utc).replace(tzinfo=None)).days
                 return f"{'<span style=\"color:#e53e3e\">' if dr<0 else ''}{dr}d{'</span>' if dr<0 else ''}"
             except: return ""
         rem_rows = ""
@@ -333,14 +333,14 @@ def generate_client_report(client: dict, items: list[dict], days: int = 7,
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
-        now = datetime.utcnow().strftime("%B %d, %Y")
+        now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%B %d, %Y")
         story = [
             Paragraph(f"PhantomFeed Intelligence Report — {client.get('name','Client')}", styles["Title"]),
             Paragraph(f"Generated: {now} | Period: Last {days} days", styles["Normal"]),
             Spacer(1, 12),
         ]
 
-        recent = [i for i in items if (i.get("published_at") or "") >= (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")]
+        recent = [i for i in items if (i.get("published_at") or "") >= (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")]
         critical = [i for i in recent if i.get("severity") == "CRITICAL"]
         story.append(Paragraph(f"Summary: {len(critical)} critical, {len(recent)} total items", styles["Heading2"]))
 

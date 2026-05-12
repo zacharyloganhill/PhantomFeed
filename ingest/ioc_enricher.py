@@ -12,7 +12,7 @@ All methods skip gracefully when no API key is configured.
 
 import re
 import socket
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -60,8 +60,8 @@ class IOCEnricher:
         result: dict = {
             "ioc_value": ioc_value,
             "ioc_type": ioc_type,
-            "enriched_at": datetime.utcnow().isoformat(),
-            "expires_at": (datetime.utcnow() + timedelta(seconds=_IOC_TTL)).isoformat(),
+            "enriched_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "expires_at": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_IOC_TTL)).isoformat(),
         }
 
         if ioc_type == "ip":

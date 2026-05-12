@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 
 import db.database as db
 from security.encryption import decrypt
@@ -37,7 +37,7 @@ class BaseSIEMFetcher(ABC):
         """Return list of normalized alert dicts."""
 
     async def run(self) -> int:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         try:
             alerts = await self.fetch()
             new_count = 0

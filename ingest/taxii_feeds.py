@@ -58,13 +58,13 @@ def _sev_from_labels(labels: list) -> str:
 
 def _date_str(ts) -> str:
     if not ts:
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     try:
         if hasattr(ts, "strftime"):
             return ts.strftime("%Y-%m-%d")
         return str(ts)[:10]
     except Exception:
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
 
 
 # ── STIX object normalizers ───────────────────────────────────────────────────

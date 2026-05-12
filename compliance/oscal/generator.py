@@ -14,7 +14,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from xml.etree import ElementTree as ET
 from xml.dom import minidom
@@ -41,7 +41,7 @@ def _uuid() -> str:
 
 
 def _now() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _pretty(root: ET.Element) -> bytes:
@@ -84,7 +84,7 @@ class OSCALGenerator:
             _elem(status_el, "state", "open")
             sched = _elem(poi, "scheduled-completion-date")
             sched.text = (item.get("due_date") or
-                          (datetime.utcnow() + timedelta(days=90)).strftime("%Y-%m-%d"))
+                          (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=90)).strftime("%Y-%m-%d"))
             risk_el = _elem(poi, "risk")
             _elem(risk_el, "title", ti["severity"] if ti else "UNKNOWN")
             char_el = _elem(risk_el, "characterization")

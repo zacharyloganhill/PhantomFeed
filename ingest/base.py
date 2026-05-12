@@ -6,7 +6,7 @@ All ingestors inherit from BaseFetcher. Handles HTTP, retries, and logging.
 import asyncio
 import httpx
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from rich.console import Console
 
@@ -86,7 +86,7 @@ class BaseFetcher(ABC):
         from ingest.risk_score import score_item
 
         console.print(f"[cyan]↓ Polling [{self.feed_label}]...[/]")
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc).replace(tzinfo=None)
         try:
             items = await self.fetch()
         except Exception as e:
@@ -154,7 +154,7 @@ class BaseFetcher(ABC):
                     except Exception:
                         pass
 
-        elapsed = (datetime.utcnow() - start).total_seconds()
+        elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - start).total_seconds()
         console.print(
             f"[green]✓ [{self.feed_label}][/] {len(items)} fetched, "
             f"[bold]{new_count} new[/] ({elapsed:.1f}s)"
@@ -175,7 +175,7 @@ class BaseFetcher(ABC):
                         return val[:10]
                     except Exception:
                         pass
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
 
     @staticmethod
     def extract_cves(text: str) -> list[str]:

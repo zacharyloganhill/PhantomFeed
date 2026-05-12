@@ -49,8 +49,8 @@ async def download_deck(
     from reports.deck_generator import BriefingDeckGenerator
     gen = BriefingDeckGenerator()
     deck_bytes = await gen.generate_deck(client_id, days=days)
-    from datetime import datetime
-    filename = f"threat-brief-{client_id[:8]}-{datetime.utcnow().strftime('%Y%m%d')}.pptx"
+    from datetime import datetime, timezone
+    filename = f"threat-brief-{client_id[:8]}-{datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}.pptx"
     return Response(
         content=deck_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",

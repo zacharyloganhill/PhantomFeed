@@ -7,7 +7,7 @@ Scheduled every 6 hours by APScheduler.
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import db.database as db
@@ -34,7 +34,7 @@ class KSIEngine:
 
     async def _validate_one(self, ksi: dict) -> dict:
         ksi_id = ksi["id"]
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         try:
             status, score, details = await self._run_check(ksi)
         except Exception as exc:
@@ -74,7 +74,7 @@ class KSIEngine:
         """KSI-1: No CRITICAL/HIGH CVEs open longer than threshold."""
         thresholds = KSI_LOOKUP["KSI-1"]["thresholds"]
         findings = await db.get_scan_findings(self.client_id, limit=2000)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         crit_over_15 = high_over_30 = 0
         crit_over_30 = high_over_60 = 0
         for f in findings:
@@ -132,7 +132,7 @@ class KSIEngine:
         active = [s for s in scanners if s.get("is_active")]
         if not active:
             return "conditional", 0.5, {"message": "No scanners configured"}
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         lagging = []
         for s in active:
             last_polled = s.get("last_polled")
@@ -192,7 +192,7 @@ class KSIEngine:
         vendors = await db.get_vendors(self.client_id)
         if not vendors:
             return "pass", 1.0, {"message": "No vendors configured"}
-        cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
+        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)).isoformat()
         assessed = [v for v in vendors
                     if (v.get("risk_data") or {}).get("assessed_at", "") >= cutoff]
         rate = len(assessed) / len(vendors)
@@ -207,12 +207,12 @@ class KSIEngine:
     async def _check_darkweb(self) -> tuple[str, float, dict]:
         """KSI-7: No unacknowledged dark web alerts older than 48h."""
         alerts = await db.get_darkweb_alerts(self.client_id, unacknowledged_only=True)
-        cutoff = (datetime.utcnow() - timedelta(hours=48)).isoformat()
+        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)).isoformat()
         stale = [a for a in alerts if a.get("detected_at", "") < cutoff]
         details = {"unacknowledged_total": len(alerts), "stale_over_48h": len(stale)}
         if not stale:
             return "pass", 1.0, details
-        cutoff_168 = (datetime.utcnow() - timedelta(hours=168)).isoformat()
+        cutoff_168 = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=168)).isoformat()
         very_stale = [a for a in stale if a.get("detected_at", "") < cutoff_168]
         if not very_stale:
             return "conditional", 0.6, details

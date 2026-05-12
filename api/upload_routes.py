@@ -17,7 +17,7 @@ import io
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
@@ -67,7 +67,7 @@ def _cleanup_temp(upload_id: str):
 
 async def _cleanup_old_temp():
     """Remove temp files older than 1 hour."""
-    cutoff = datetime.utcnow() - timedelta(hours=1)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
     for fname in os.listdir(TEMP_DIR):
         fpath = os.path.join(TEMP_DIR, fname)
         try:
@@ -201,7 +201,7 @@ async def confirm_scan(upload_id: str):
                 "vendor": "",
                 "product": "",
                 "url": "",
-                "published_at": datetime.utcnow().strftime("%Y-%m-%d"),
+                "published_at": datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"),
                 "cve_ids": cves,
                 "tags": [finding.get("hostname", ""), finding.get("ip_address", "")],
                 "raw": {"solution": finding.get("solution", "")},

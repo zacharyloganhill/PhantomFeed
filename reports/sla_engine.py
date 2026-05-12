@@ -12,7 +12,7 @@ Per-client overrides: store in client's stack_profile as
   {"sla": {"CRITICAL": 7, "HIGH": 14, "MEDIUM": 60, "LOW": 120}}
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -53,9 +53,9 @@ class SLAEngine:
             try:
                 pub_dt = datetime.strptime(published, "%Y-%m-%d")
             except ValueError:
-                pub_dt = datetime.utcnow()
+                pub_dt = datetime.now(timezone.utc).replace(tzinfo=None)
         else:
-            pub_dt = datetime.utcnow()
+            pub_dt = datetime.now(timezone.utc).replace(tzinfo=None)
 
         due_dt = pub_dt + timedelta(days=days)
         return due_dt.strftime("%Y-%m-%d"), days
@@ -66,7 +66,7 @@ async def check_overdue():
     from db import database as db
     from reports.email_digest import send_client_digest
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     overdue = await db.get_overdue_remediations()
 
     for rem in overdue:
@@ -89,7 +89,7 @@ async def check_overdue():
         try:
             due_dt    = datetime.strptime(due, "%Y-%m-%d")
             created_dt = datetime.strptime(created, "%Y-%m-%d")
-            today_dt  = datetime.utcnow()
+            today_dt  = datetime.now(timezone.utc).replace(tzinfo=None)
             total_days = (due_dt - created_dt).days or 1
             elapsed    = (today_dt - created_dt).days
             pct = elapsed / total_days
@@ -107,7 +107,7 @@ async def calculate_mttr(client_id: str, days: int = 90) -> dict:
     """Mean time to remediate (days) by severity for a given period."""
     from db import database as db_mod
     database = db_mod.get_db()
-    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
 
     async with database.execute(
         """SELECT ri.*, ti.severity, ti.published_at

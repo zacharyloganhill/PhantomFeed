@@ -8,7 +8,7 @@ For each of the 110 Level 2 practices, derives an evidence-based status from:
 
 Status values: implemented | partial | not_implemented | not_applicable
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from compliance.cmmc_practices import CMMC_PRACTICES, DOMAIN_ORDER, PRACTICE_LOOKUP
@@ -155,7 +155,7 @@ class CMMCAssessor:
         from db import database as db
         saved = await db.get_cmmc_assessment(client_id)
         practices = saved.get("practices", {}) if saved else {}
-        practices[practice_id] = {"status": status, "notes": notes, "updated_at": datetime.utcnow().isoformat()}
+        practices[practice_id] = {"status": status, "notes": notes, "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()}
         await db.save_cmmc_assessment(client_id, practices)
         return {"ok": True, "practice_id": practice_id, "status": status}
 
@@ -164,7 +164,7 @@ class CMMCAssessor:
         from db import database as db
         saved = await db.get_cmmc_assessment(client_id)
         practices = saved.get("practices", {}) if saved else {}
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         applied = 0
         for u in updates:
             pid = u.get("practice_id")

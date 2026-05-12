@@ -7,7 +7,7 @@ import json
 import hashlib
 import uuid
 import aiosqlite
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import config
@@ -505,7 +505,7 @@ async def upsert_item(item: dict) -> bool:
     item_id = item.get("id") or make_id(
         item["feed_id"], item["title"], item.get("published_at", "")
     )
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
     sql = """
     INSERT OR IGNORE INTO threat_items
@@ -737,7 +737,7 @@ async def get_stats() -> dict:
 async def purge_old_items():
     """Remove items older than RETENTION_DAYS."""
     db = get_db()
-    cutoff = (datetime.utcnow() - timedelta(days=config.RETENTION_DAYS)).isoformat()
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=config.RETENTION_DAYS)).isoformat()
     cursor = await db.execute(
         "DELETE FROM threat_items WHERE published_at < ? AND is_new = 0", (cutoff,)
     )
@@ -751,7 +751,7 @@ async def create_client(name: str, contact_email: str = "", stack_profile: dict 
     import uuid
     db = get_db()
     client_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         "INSERT INTO clients (id, name, contact_email, stack_profile, created_at) VALUES (?,?,?,?,?)",
         (client_id, name, contact_email, json.dumps(stack_profile or {}), now),
@@ -822,7 +822,7 @@ async def create_user(username: str, password_hash: str, role: str = "analyst",
     import uuid
     db = get_db()
     user_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         "INSERT INTO users (id, username, password_hash, role, client_id, created_at) VALUES (?,?,?,?,?,?)",
         (user_id, username, password_hash, role, client_id, now),
@@ -855,7 +855,7 @@ async def upsert_asset(client_id: str, software: str, version: str = "",
     import uuid
     db = get_db()
     asset_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO client_assets
            (id, client_id, hostname, ip_address, os, os_version, software, version, cpe_string, asset_type, created_at, updated_at)
@@ -903,7 +903,7 @@ async def upsert_exposure(client_id: str, item_id: str, asset_id: str,
     if existing:
         return existing[0]
     exp_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO asset_exposures (id, client_id, item_id, asset_id, match_type, confidence, confirmed_at)
            VALUES (?,?,?,?,?,?,?)""",
@@ -950,7 +950,7 @@ async def create_remediation(client_id: str, item_id: str, sla_days: int,
     if existing:
         return {"id": existing[0], "exists": True}
     rem_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO remediation_items
            (id, client_id, item_id, status, priority, due_date, sla_days, created_at, updated_at)
@@ -985,7 +985,7 @@ async def update_remediation(rem_id: str, **fields) -> Optional[dict]:
     if not sets:
         return None
     sets.append("updated_at = ?")
-    params.append(datetime.utcnow().isoformat())
+    params.append(datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
     params.append(rem_id)
     await db.execute(f"UPDATE remediation_items SET {', '.join(sets)} WHERE id = ?", params)
     await db.commit()
@@ -995,7 +995,7 @@ async def update_remediation(rem_id: str, **fields) -> Optional[dict]:
 
 
 async def get_overdue_remediations() -> list[dict]:
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     db = get_db()
     async with db.execute(
         "SELECT * FROM remediation_items WHERE status = 'open' AND due_date < ?", (today,)
@@ -1016,7 +1016,7 @@ async def get_ioc_cache(ioc_value: str) -> Optional[dict]:
         return None
     d = dict(row)
     # Check expiry
-    if d.get("expires_at") and d["expires_at"] < datetime.utcnow().isoformat():
+    if d.get("expires_at") and d["expires_at"] < datetime.now(timezone.utc).replace(tzinfo=None).isoformat():
         return None
     return d
 
@@ -1058,7 +1058,7 @@ async def create_webhook(client_id: str, webhook_type: str, url: str,
     import uuid
     db = get_db()
     wh_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO webhook_configs
            (id, client_id, webhook_type, url, secret, min_severity, categories, is_active, created_at)
@@ -1160,7 +1160,7 @@ async def create_darkweb_alert(client_id: str, alert_type: str, source: str,
                                 url: str = "") -> dict:
     db = get_db()
     alert_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO darkweb_alerts
            (id, client_id, alert_type, source, matched_term, content_preview, url, detected_at)
@@ -1213,7 +1213,7 @@ async def is_darkweb_seen(source: str, item_id: str) -> bool:
 async def mark_darkweb_seen(source: str, item_id: str):
     db = get_db()
     key = f"{source}:{item_id}"
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         "INSERT OR IGNORE INTO darkweb_seen (id, source, seen_at) VALUES (?,?,?)",
         (key, source, now),
@@ -1240,7 +1240,7 @@ async def upsert_threat_actor(actor: dict) -> bool:
     db = get_db()
     async with db.execute("SELECT id FROM threat_actors WHERE id = ?", (actor["id"],)) as cur:
         existing = await cur.fetchone()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     params = (
         actor["id"], actor.get("name", ""), json.dumps(actor.get("aliases", [])),
         actor.get("origin", ""), actor.get("sponsor", ""), actor.get("motivation", ""),
@@ -1298,7 +1298,7 @@ async def get_threat_actor(actor_id: str) -> Optional[dict]:
 async def link_actor_to_item(actor_id: str, item_id: str):
     db = get_db()
     link_id = hashlib.md5(f"{actor_id}:{item_id}".encode()).hexdigest()[:16]
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         "INSERT OR IGNORE INTO actor_item_links (id, actor_id, item_id, linked_at) VALUES (?,?,?,?)",
         (link_id, actor_id, item_id, now),
@@ -1331,7 +1331,7 @@ async def create_vendor(client_id: str, vendor_name: str, vendor_type: str = "",
                          contact_email: str = "") -> dict:
     db = get_db()
     vid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO client_vendors
            (id, client_id, vendor_name, vendor_type, criticality, data_types, contact_email, created_at)
@@ -1396,7 +1396,7 @@ async def create_vendor_full(client_id: str, vendor_name: str, vendor_type: str 
                               category: str = "", contact_email: str = "") -> dict:
     db = get_db()
     vid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO client_vendors
            (id, client_id, vendor_name, vendor_type, criticality, products, category,
@@ -1424,7 +1424,7 @@ async def get_vendor_exposure_count(vendor_id: str) -> int:
 async def add_vendor_exposure(vendor_id: str, item_id: str):
     db = get_db()
     eid = hashlib.md5(f"{vendor_id}:{item_id}".encode()).hexdigest()[:16]
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         "INSERT OR IGNORE INTO vendor_exposures (id, vendor_id, item_id, detected_at) VALUES (?,?,?,?)",
         (eid, vendor_id, item_id, now),
@@ -1440,7 +1440,7 @@ async def save_posture_score(client_id: str, score: float, grade: str,
                               velocity_component: float = 0) -> dict:
     db = get_db()
     sid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO posture_scores
            (id, client_id, score, grade, percentile, sla_component, mttr_component,
@@ -1480,7 +1480,7 @@ async def create_tabletop(client_id: str, title: str, scenario_type: str,
                            scenario_json: dict) -> dict:
     db = get_db()
     ex_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO tabletop_exercises
            (id, client_id, title, scenario_type, generated_at, scenario_json)
@@ -1560,8 +1560,8 @@ async def get_notifications(client_id: str = None, limit: int = 10) -> list[dict
     """Aggregate recent alerts across dark web, SLA, and critical items."""
     db = get_db()
     notifications = []
-    now = datetime.utcnow().isoformat()
-    cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    cutoff_24h = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)).isoformat()
 
     # Dark web alerts (unacknowledged)
     if client_id:
@@ -1606,7 +1606,7 @@ async def get_notifications(client_id: str = None, limit: int = 10) -> list[dict
         })
 
     # SLA overdue count
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     overdue_q = "SELECT COUNT(*) FROM remediation_items WHERE status='open' AND due_date < ?"
     if client_id:
         overdue_q += " AND client_id = ?"
@@ -1651,7 +1651,7 @@ async def get_cmmc_assessment(client_id: str) -> Optional[dict]:
 async def save_cmmc_assessment(client_id: str, practices: dict) -> dict:
     import json as _json
     db = get_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     # Check if row exists
     async with db.execute(
         "SELECT id FROM cmmc_assessments WHERE client_id = ?", (client_id,)
@@ -1682,7 +1682,7 @@ async def create_scanner_config(client_id: str, scanner_type: str, label: str,
                                  poll_interval_hours: int = 6) -> dict:
     db = get_db()
     sid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO scanner_configs
            (id, client_id, scanner_type, label, host_url, api_key_enc, secret_key_enc,
@@ -1765,7 +1765,7 @@ async def upsert_scan_finding(finding: dict) -> bool:
     db = get_db()
     key = f"{finding['scanner_id']}:{finding.get('plugin_id','')}:{finding.get('hostname','')}{finding.get('ip_address','')}"
     fid = hashlib.md5(key.encode()).hexdigest()[:24]
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     existing = None
     async with db.execute("SELECT id FROM scan_findings WHERE id = ?", (fid,)) as cur:
         existing = await cur.fetchone()
@@ -1840,7 +1840,7 @@ async def create_siem_config(client_id: str, siem_type: str, label: str,
                               poll_interval_hours: int = 6) -> dict:
     db = get_db()
     sid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO siem_configs
            (id, client_id, siem_type, label, host_url, api_key_enc, secret_key_enc,
@@ -1918,7 +1918,7 @@ async def add_pull_record(config_id: str, config_type: str, client_id: str,
                            asset_count: int = 0, error_message: str = None):
     db = get_db()
     rid = str(uuid.uuid4())[:16]
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO pull_history
            (id, config_id, config_type, client_id, pulled_at, status,

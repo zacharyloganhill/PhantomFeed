@@ -6,7 +6,7 @@ Exports to PDF (reportlab) or PPTX (python-pptx).
 """
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -160,7 +160,7 @@ async def generate_tabletop_scenario(
         scenario_data = _fallback_scenario(template, client_name, industry)
 
     # Save to DB
-    title = f"{template['title']} — {client_name} ({datetime.utcnow().strftime('%Y-%m-%d')})"
+    title = f"{template['title']} — {client_name} ({datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d')})"
     saved = await db.create_tabletop(client_id, title, scenario_type, scenario_data)
 
     return {

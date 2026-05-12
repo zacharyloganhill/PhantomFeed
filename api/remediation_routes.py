@@ -1,5 +1,6 @@
 """PhantomFeed — Remediation SLA API Routes"""
 
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
@@ -34,12 +35,12 @@ async def list_remediations(
     user: dict = Depends(get_current_user),
 ):
     rems = await db.get_remediations(client_id, status=status)
-    today = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
     for r in rems:
         due = r.get("due_date") or ""
         r["days_remaining"] = (
-            (__import__("datetime").datetime.strptime(due, "%Y-%m-%d")
-             - __import__("datetime").datetime.utcnow()).days
+            (datetime.strptime(due, "%Y-%m-%d")
+             - datetime.now(timezone.utc).replace(tzinfo=None)).days
             if due else None
         )
         r["is_overdue"] = bool(due and due < today and r.get("status") == "open")
@@ -102,7 +103,7 @@ async def client_metrics(
         raise HTTPException(status_code=404, detail="Client not found")
 
     rems = await db.get_remediations(client_id)
-    today = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
 
     open_items    = [r for r in rems if r.get("status") == "open"]
     overdue_items = [r for r in open_items if (r.get("due_date") or "") < today]

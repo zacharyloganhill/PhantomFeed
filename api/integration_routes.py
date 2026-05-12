@@ -8,7 +8,7 @@ Registered BEFORE scanner_routes / siem_routes so literal paths
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -262,7 +262,7 @@ async def update_all_integration_statuses():
     red    = last pull failed OR no pull in 4× interval
     gray   = never pulled
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     async def _compute(last_polled: Optional[str], last_status: Optional[str],
                        interval_h: int) -> str:

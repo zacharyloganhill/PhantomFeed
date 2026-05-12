@@ -5,7 +5,7 @@ Stores every API call + explicit security events in a dedicated table.
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import aiosqlite
@@ -74,7 +74,7 @@ async def log_event(
 ):
     db = get_audit_db()
     event_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute(
         """INSERT INTO audit_log
            (id, timestamp, event_type, user_id, username, client_id,

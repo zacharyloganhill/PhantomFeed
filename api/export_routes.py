@@ -18,7 +18,7 @@ import json
 import re
 import uuid
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -61,7 +61,7 @@ def _days_remaining(due_date: str) -> Optional[int]:
         return None
     try:
         due = datetime.strptime(due_date[:10], "%Y-%m-%d")
-        return (due - datetime.utcnow()).days
+        return (due - datetime.now(timezone.utc).replace(tzinfo=None)).days
     except Exception:
         return None
 
@@ -89,7 +89,7 @@ async def _query_items(
         limit=limit,
     )
     if days:
-        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
         items = [i for i in items if (i.get("published_at") or "") >= cutoff]
     return items
 
@@ -253,7 +253,7 @@ async def export_iocs_stix(
     user: dict = Depends(_require_auth),
 ):
     rows = await _get_ioc_rows(days, type)
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%SZ")
     indicators = []
     for r in rows:
         ioc_type = r.get("ioc_type", "unknown")
@@ -303,7 +303,7 @@ def _stix_pattern(ioc_type: str, value: str) -> Optional[str]:
 
 async def _get_ioc_rows(days: int, ioc_type_filter: Optional[str]) -> list[dict]:
     from db import database as db
-    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).isoformat()
     all_rows = await db.list_ioc_cache(limit=10000)
     rows = [r for r in all_rows if (r.get("enriched_at") or "") >= cutoff]
     if ioc_type_filter and ioc_type_filter != "all":

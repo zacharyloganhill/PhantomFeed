@@ -12,7 +12,7 @@ import json
 import re
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -719,7 +719,7 @@ class STIXBundleParser:
             return {"format": "stix_bundle", "items": [], "error": str(e)}
 
         items = []
-        now = datetime.utcnow().strftime("%Y-%m-%d")
+        now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
 
         for obj in bundle.get("objects", []):
             obj_type = obj.get("type", "")

@@ -7,7 +7,7 @@ import difflib
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -354,7 +354,7 @@ def _create_darkweb_threat_item(title: str, description: str, url: str,
             "title": title[:250],
             "description": description[:2000],
             "vendor": "", "product": "", "url": url,
-            "published_at": datetime.utcnow().strftime("%Y-%m-%d"),
+            "published_at": datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"),
             "cve_ids": [], "tags": ["Dark Web", source],
             "raw": {}, "compliance_tags": [],
         }
@@ -406,5 +406,5 @@ async def run_client_darkweb_scan(client_id: str) -> dict:
         "client_id": client_id,
         "new_alerts": max(0, after - before),
         "total_unacknowledged": after,
-        "scanned_at": datetime.utcnow().isoformat(),
+        "scanned_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     }

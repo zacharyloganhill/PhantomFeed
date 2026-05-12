@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 
 import db.database as db
 from security.encryption import decrypt
@@ -39,7 +39,7 @@ class BaseScannerFetcher(ABC):
 
     async def run(self) -> int:
         """Fetch findings, upsert, update last_polled/last_status. Returns new finding count."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         try:
             findings = await self.fetch()
             new_count = 0

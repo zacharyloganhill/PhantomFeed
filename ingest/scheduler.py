@@ -259,7 +259,7 @@ async def _poll_all_scanners_and_siems():
     from db import database as _db
     from api.scanner_routes import _run_scanner
     from api.siem_routes import _run_siem
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         for scanner in await _db.get_all_active_scanner_configs():
             last = scanner.get("last_polled")

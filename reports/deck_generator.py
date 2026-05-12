@@ -5,7 +5,7 @@ Generates a 12-slide executive threat intelligence briefing.
 import io
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 try:
@@ -185,14 +185,14 @@ class BriefingDeckGenerator:
         stack = client.get("stack_profile") or {}
         industry = client.get("industry") or stack.get("industry") or "Technology"
         client_name = client.get("name", "Client")
-        date_from = (datetime.utcnow() - timedelta(days=days)).strftime("%B %d, %Y")
-        date_to = datetime.utcnow().strftime("%B %d, %Y")
+        date_from = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%B %d, %Y")
+        date_to = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%B %d, %Y")
 
         # Fetch data
         all_items = await db.get_items(limit=500, sort="risk", client_id=client_id)
         if not all_items:
             all_items = await db.get_items(limit=200, sort="risk")
-        recent = [i for i in all_items if i.get("published_at", "") >= (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")]
+        recent = [i for i in all_items if i.get("published_at", "") >= (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")]
 
         crit_items = [i for i in recent if i.get("severity") == "CRITICAL"]
         high_items = [i for i in recent if i.get("severity") == "HIGH"]
@@ -272,7 +272,7 @@ class BriefingDeckGenerator:
         br = sl.shapes.add_shape(1, Inches(0), Inches(6.8), Inches(10), Inches(0.7))
         br.fill.solid(); br.fill.fore_color.rgb = TEAL; br.line.fill.background()
         _text_box(sl, 0.2, 6.85, 5, 0.5, "PhantomFeed Threat Intelligence", 9, color=DARKBG)
-        _text_box(sl, 7, 6.85, 3, 0.5, datetime.utcnow().strftime("%B %Y"), 9, color=DARKBG, align=PP_ALIGN.RIGHT)
+        _text_box(sl, 7, 6.85, 3, 0.5, datetime.now(timezone.utc).replace(tzinfo=None).strftime("%B %Y"), 9, color=DARKBG, align=PP_ALIGN.RIGHT)
         # Main title
         _text_box(sl, 0.5, 1.5, 9, 1.0, "Threat Intelligence Brief", 36, bold=True, color=TEAL)
         _text_box(sl, 0.5, 2.6, 9, 0.7, client_name, 28, bold=True)
@@ -477,7 +477,7 @@ class BriefingDeckGenerator:
         client = await db.get_client(client_id)
         name = client.get("name", "Client") if client else "Client"
         items = await db.get_items(limit=200, sort="risk", client_id=client_id)
-        recent = [i for i in items if i.get("published_at", "") >= (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")]
+        recent = [i for i in items if i.get("published_at", "") >= (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")]
         crit = sum(1 for i in recent if i.get("severity") == "CRITICAL")
         high = sum(1 for i in recent if i.get("severity") == "HIGH")
         kev  = sum(1 for i in recent if i.get("category") == "kev")
