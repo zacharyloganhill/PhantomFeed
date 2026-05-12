@@ -25,7 +25,17 @@ from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
-from auth.auth import get_current_user, decode_token
+
+def _scope_client(user: dict, client_id: Optional[str]) -> Optional[str]:
+    """Non-admins may only operate on their own client_id."""
+    if user.get("role") == "admin":
+        return client_id
+    own = user.get("client_id")
+    if client_id and client_id != own:
+        raise HTTPException(403, "Access denied")
+    return client_id
+
+from auth.auth import get_current_user, decode_token, require_client_access
 
 TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -89,9 +99,10 @@ async def upload_scan(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     client_id: Optional[str] = Query(None),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     """Auto-detect scan format, parse, return preview."""
+    client_id = _scope_client(user, client_id)
     if background_tasks:
         background_tasks.add_task(_cleanup_old_temp)
 
@@ -257,9 +268,10 @@ async def confirm_scan(upload_id: str, _: dict = Depends(get_current_user)):
 async def upload_assets(
     file: UploadFile = File(...),
     client_id: Optional[str] = Query(None),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     """Preview an asset CSV/XLSX upload."""
+    client_id = _scope_client(user, client_id)
     data = await file.read()
     filename = file.filename or "assets.csv"
 
@@ -358,9 +370,10 @@ async def upload_iocs(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     client_id: Optional[str] = Query(None),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     """Preview IOC list; triggers enrichment as background task."""
+    client_id = _scope_client(user, client_id)
     data = await file.read()
     filename = file.filename or "iocs.txt"
 
@@ -521,8 +534,9 @@ async def confirm_clients(upload_id: str, _: dict = Depends(get_current_user)):
 async def upload_history(
     client_id: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
+    client_id = _scope_client(user, client_id)
     from uploads.upload_log import list_upload_logs
     return await list_upload_logs(client_id=client_id, limit=limit)
 
