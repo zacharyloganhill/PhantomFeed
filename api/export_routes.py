@@ -98,6 +98,16 @@ async def _query_items(
 # GET /export/items.csv
 # ---------------------------------------------------------------------------
 
+def _enforce_client_scope(user: dict, client_id: Optional[str]) -> Optional[str]:
+    """Non-admins may only filter by their own client_id."""
+    if user.get("role") == "admin":
+        return client_id
+    own = user.get("client_id")
+    if client_id and client_id != own:
+        raise HTTPException(403, "Access denied")
+    return client_id
+
+
 @router.get("/export/items.csv")
 async def export_items_csv(
     severity: Optional[str] = Query(None),
@@ -108,6 +118,7 @@ async def export_items_csv(
     days: Optional[int] = Query(None),
     user: dict = Depends(_require_auth),
 ):
+    client_id = _enforce_client_scope(user, client_id)
     items = await _query_items(severity, category, feed_id, search, client_id, days)
 
     buf = io.StringIO()
@@ -178,6 +189,7 @@ async def export_items_json(
     days: Optional[int] = Query(None),
     user: dict = Depends(_require_auth),
 ):
+    client_id = _enforce_client_scope(user, client_id)
     items = await _query_items(severity, category, feed_id, search, client_id, days)
     content = json.dumps({"count": len(items), "items": items}, default=str, indent=2).encode("utf-8")
     return StreamingResponse(
