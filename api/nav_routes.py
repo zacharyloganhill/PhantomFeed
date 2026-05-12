@@ -15,6 +15,9 @@ router = APIRouter(prefix="/api/v1", tags=["Navigation"])
 @router.get("/scanners/status", summary="Active scanner configs and poll status")
 async def scanners_status(user=Depends(get_current_user)):
     configs = await db.get_all_active_scanner_configs()
+    if user.get("role") != "admin":
+        own = user.get("client_id")
+        configs = [c for c in configs if c.get("client_id") == own]
     masked = []
     for c in configs:
         masked.append({
@@ -33,6 +36,9 @@ async def scanners_status(user=Depends(get_current_user)):
 @router.get("/siems/status", summary="Active SIEM configs and poll status")
 async def siems_status(user=Depends(get_current_user)):
     configs = await db.get_all_active_siem_configs()
+    if user.get("role") != "admin":
+        own = user.get("client_id")
+        configs = [c for c in configs if c.get("client_id") == own]
     masked = []
     for c in configs:
         masked.append({
@@ -51,6 +57,9 @@ async def siems_status(user=Depends(get_current_user)):
 @router.get("/ksi/summary", summary="Cross-client KSI pass rate summary")
 async def ksi_summary(user=Depends(get_current_user)):
     clients_data = await db.get_all_clients_ksi_summary()
+    if user.get("role") != "admin":
+        own = user.get("client_id")
+        clients_data = [c for c in clients_data if c.get("client_id") == own]
     total_pass = sum(c.get("passing",    0) for c in clients_data)
     total_ksi  = sum(c.get("total_ksis", 0) for c in clients_data)
     pass_rate  = round(total_pass / total_ksi, 3) if total_ksi else None
