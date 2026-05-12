@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 import config
+from auth.auth import get_current_user
 from db import database as db
 from ingest import scheduler
 from api.routes import router
@@ -136,6 +137,19 @@ app.add_middleware(
 from api.audit_middleware import AuditMiddleware
 app.add_middleware(AuditMiddleware)
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # Only set HSTS when served over HTTPS
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 app.include_router(router, prefix="/api/v1", tags=["Threat Feed"])
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
@@ -163,7 +177,7 @@ app.include_router(report_router, tags=["Reports"])
 
 
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
-async def ollama_proxy(path: str, request: Request):
+async def ollama_proxy(path: str, request: Request, _: dict = Depends(get_current_user)):
     body = await request.body()
 
     async def _stream():
