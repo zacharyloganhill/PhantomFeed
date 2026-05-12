@@ -453,3 +453,101 @@ def test_ksi_definitions_completeness():
 def test_oscal_generator_importable():
     from compliance.oscal.generator import OSCALGenerator, OSCAL_NS
     assert OSCAL_NS == "http://csrc.nist.gov/ns/oscal/1.0"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section 8 — Security controls
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_login_lockout_triggers():
+    """AC-7: 5 failed attempts should raise 429."""
+    import importlib
+    import api.auth_routes as ar
+    # Reset state
+    ar._attempts.clear()
+    username = "lockout_test_user"
+    from fastapi import HTTPException
+    for _ in range(ar._MAX_ATTEMPTS):
+        ar._record_failure(username)
+    try:
+        ar._check_lockout(username)
+        assert False, "Expected HTTPException 429"
+    except HTTPException as e:
+        assert e.status_code == 429
+        assert "locked" in e.detail.lower()
+
+
+def test_login_lockout_clears_on_success():
+    """Successful login clears the failure counter."""
+    import api.auth_routes as ar
+    username = "clear_test_user"
+    ar._attempts.clear()
+    for _ in range(ar._MAX_ATTEMPTS - 1):
+        ar._record_failure(username)
+    ar._clear_failures(username)
+    # Should not raise after clear
+    ar._check_lockout(username)
+
+
+def test_require_client_access_admin_passes():
+    """Admin users bypass the client_id check."""
+    from fastapi import HTTPException
+    from auth.auth import require_client_access
+    admin = {"role": "admin", "client_id": None}
+    require_client_access(admin, "any-client-id")  # must not raise
+
+
+def test_require_client_access_owner_passes():
+    """Client user with matching client_id passes."""
+    from auth.auth import require_client_access
+    user = {"role": "client", "client_id": "abc-123"}
+    require_client_access(user, "abc-123")  # must not raise
+
+
+def test_require_client_access_wrong_client_raises():
+    """Client user with mismatched client_id gets 403."""
+    from fastapi import HTTPException
+    from auth.auth import require_client_access
+    user = {"role": "client", "client_id": "abc-123"}
+    try:
+        require_client_access(user, "other-client-id")
+        assert False, "Expected HTTPException 403"
+    except HTTPException as e:
+        assert e.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_user_update_and_delete(tmp_path):
+    """update_user and delete_user work correctly."""
+    import config
+    config.DB_PATH = str(tmp_path / "test.db")
+    import db.database as database
+    await database.connect()
+    try:
+        from auth.auth import hash_password, verify_password
+        user = await database.create_user(
+            username="test_edit_user",
+            password_hash=hash_password("oldpass"),
+            role="client",
+        )
+        user_id = user["id"]
+
+        # Update password
+        new_hash = hash_password("newpass")
+        updated = await database.update_user(user_id, password_hash=new_hash)
+        assert updated is not None
+        assert verify_password("newpass", updated["password_hash"])
+
+        # Update role
+        updated = await database.update_user(user_id, role="analyst")
+        assert updated["role"] == "analyst"
+
+        # Delete
+        deleted = await database.delete_user(user_id)
+        assert deleted is True
+        assert await database.get_user_by_id(user_id) is None
+
+        # Delete non-existent
+        assert await database.delete_user("nonexistent-id") is False
+    finally:
+        await database.close()
