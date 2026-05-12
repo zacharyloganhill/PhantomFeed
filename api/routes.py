@@ -27,8 +27,12 @@ async def list_items(
     exposed_only: Optional[bool] = Query(None, description="When client_id set: show only items with confirmed exposures"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
+    # Non-admin users may only filter by their own client
+    if client_id and user.get("role") != "admin" and user.get("client_id") != client_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Resolve client stack profile into SQL-level filters
     stack_vendors = None
     stack_products = None
