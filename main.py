@@ -66,6 +66,18 @@ async def lifespan(app: FastAPI):
         border_style="cyan"
     ))
 
+    # Warn on insecure defaults — never silently run with known credentials
+    _defaults = {
+        "SECRET_KEY": ("change-me-in-production", config.SECRET_KEY),
+        "ADMIN_PASSWORD": ("phantomfeed-admin", config.ADMIN_PASSWORD),
+    }
+    for var, (bad, actual) in _defaults.items():
+        if actual == bad:
+            console.print(
+                f"[bold red]⚠ WARNING: {var} is set to the default value. "
+                f"Set a strong value in your .env file before exposing this server.[/]"
+            )
+
     # Connect to database
     await db.connect()
     console.print("[green]✓ Database connected[/]")
