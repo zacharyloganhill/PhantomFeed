@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 import db.database as db
-from auth.auth import get_current_user, require_client_access
+from auth.auth import get_current_user, require_admin, require_client_access
 from compliance.ksi_definitions import KSI_DEFINITIONS
 from compliance.ksi_engine import KSIEngine
 
@@ -63,7 +63,7 @@ async def trigger_validation(client_id: str, background_tasks: BackgroundTasks,
 
 
 @router.get("/admin/ksi/summary")
-async def global_ksi_summary(user=Depends(get_current_user)):
+async def global_ksi_summary(_: dict = Depends(require_admin)):
     """Cross-client KSI summary for admin overview."""
     return {"clients": await db.get_all_clients_ksi_summary()}
 

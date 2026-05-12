@@ -220,6 +220,12 @@ async def all_integrations(user=Depends(get_current_user)):
     scanners = await db.get_all_active_scanner_configs()
     siems    = await db.get_all_active_siem_configs()
 
+    # Non-admins see only their own client's integrations
+    if user.get("role") != "admin":
+        own = user.get("client_id")
+        scanners = [s for s in scanners if s.get("client_id") == own]
+        siems    = [s for s in siems    if s.get("client_id") == own]
+
     def _enrich_scanner(c: dict) -> dict:
         return {
             "id":               c["id"],
