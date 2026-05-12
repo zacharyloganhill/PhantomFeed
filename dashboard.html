@@ -439,7 +439,7 @@ function renderDetail(i){
     <div class="dlabel">Export</div>
     <button class="qbtn" onclick="exportItemJSON('${esc2(i.id)}')">⬇ Export as JSON</button>
     <button class="qbtn" onclick="copyMarkdown('${esc2(i.title)}','${esc2(i.severity)}','${esc2(cves.join(','))}','${esc2(i.url||'')}')">⧉ Copy Markdown Advisory</button>
-    <button class="qbtn" onclick="window.open('/api/v1/export/iocs.txt?days=7','_blank')">⬇ Export IOCs (7d)</button>
+    <button class="qbtn" onclick="window.open('/api/v1/export/iocs.txt?days=7&token='+getToken(),'_blank')">⬇ Export IOCs (7d)</button>
     <button class="qbtn" id="rescore-btn-${esc2(i.id)}" onclick="rescoreItem('${esc2(i.id)}')">&#9670; Rescore This Item</button>
     <button class="qbtn" id="misp-btn-${esc2(i.id)}" onclick="pushToMISP('${esc2(i.id)}')">⮕ Push to MISP</button>
   </div>
@@ -765,6 +765,7 @@ function exportCurrentCSV() {
   if (S.cat) params.set('category', S.cat);
   if (S.search) params.set('search', S.search);
   if (S.sort) params.set('sort', S.sort);
+  params.set('token', getToken());
   window.open('/api/v1/export/items.csv?' + params.toString(), '_blank');
 }
 
@@ -774,6 +775,7 @@ function exportCurrentJSON() {
   if (S.cat) params.set('category', S.cat);
   if (S.q) params.set('search', S.q);
   if (S.sort) params.set('sort', S.sort);
+  params.set('token', getToken());
   window.open('/api/v1/export/items.json?' + params.toString(), '_blank');
 }
 

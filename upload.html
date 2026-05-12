@@ -1007,26 +1007,28 @@ function downloadTemplate(type) {
 // ── Export helpers ────────────────────────────────────────────────────────────
 function downloadItems(fmt) {
   const sev = document.getElementById('csv-sev').value;
-  let url = `${API}/export/items.${fmt}`;
-  if (sev) url += `?severity=${encodeURIComponent(sev)}`;
+  let url = `${API}/export/items.${fmt}?token=${encodeURIComponent(getToken())}`;
+  if (sev) url += `&severity=${encodeURIComponent(sev)}`;
   window.open(url, '_blank');
 }
 
 function downloadIOCs() {
   const days = document.getElementById('ioc-days').value;
   const fmt = document.getElementById('ioc-fmt').value;
-  window.open(`${API}/export/iocs.${fmt}?days=${days}`, '_blank');
+  window.open(`${API}/export/iocs.${fmt}?days=${days}&token=${encodeURIComponent(getToken())}`, '_blank');
 }
 
 function downloadRemediation(fmt) {
   const clientId = document.getElementById('rem-client-sel').value;
   if (!clientId) { toast('Please select a client', 'error'); return; }
-  window.open(`${API}/clients/${clientId}/export/remediation.${fmt}`, '_blank');
+  window.open(`${API}/clients/${clientId}/export/remediation.${fmt}?token=${encodeURIComponent(getToken())}`, '_blank');
 }
 
 function downloadRules() {
   const clientId = document.getElementById('rules-client').value;
-  const url = clientId ? `${API}/clients/${clientId}/export/detection-rules.zip` : `${API}/clients/global/export/detection-rules.zip`;
+  const url = clientId
+    ? `${API}/clients/${clientId}/export/detection-rules.zip?token=${encodeURIComponent(getToken())}`
+    : `${API}/clients/global/export/detection-rules.zip?token=${encodeURIComponent(getToken())}`;
   window.open(url, '_blank');
 }
 
@@ -1037,14 +1039,14 @@ function downloadReport(fmt) {
   if (fmt === 'pdf') {
     window.open(`${API}/admin/clients/${clientId}/report.pdf?days=${days}`, '_blank');
   } else {
-    window.open(`${API}/clients/${clientId}/report.html?days=${days}`, '_blank');
+    window.open(`${API}/clients/${clientId}/report.html?days=${days}&token=${encodeURIComponent(getToken())}`, '_blank');
   }
 }
 
 function downloadComplianceReport() {
   const fw = document.getElementById('compliance-framework').value;
   const clientId = document.getElementById('rpt-client').value;
-  let url = `${API}/export/items.csv?compliance=${fw}`;
+  let url = `${API}/export/items.csv?compliance=${fw}&token=${encodeURIComponent(getToken())}`;
   if (clientId) url += `&client_id=${clientId}`;
   window.open(url, '_blank');
 }

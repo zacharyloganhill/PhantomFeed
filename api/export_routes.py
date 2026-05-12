@@ -21,10 +21,35 @@ import zipfile
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from auth.auth import decode_token
+
 router = APIRouter()
+
+
+async def _require_auth(
+    request: Request,
+    token: Optional[str] = Query(None),
+) -> dict:
+    """Accept JWT from ?token= query param or Authorization: Bearer header."""
+    raw = token
+    if not raw:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            raw = auth_header[7:]
+    if not raw:
+        raise HTTPException(401, "Not authenticated")
+    payload = decode_token(raw)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    from db import database as db
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "User not found")
+    return user
 
 
 def _slug(text: str) -> str:
@@ -81,6 +106,7 @@ async def export_items_csv(
     search: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     days: Optional[int] = Query(None),
+    user: dict = Depends(_require_auth),
 ):
     items = await _query_items(severity, category, feed_id, search, client_id, days)
 
@@ -150,6 +176,7 @@ async def export_items_json(
     search: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     days: Optional[int] = Query(None),
+    user: dict = Depends(_require_auth),
 ):
     items = await _query_items(severity, category, feed_id, search, client_id, days)
     content = json.dumps({"count": len(items), "items": items}, default=str, indent=2).encode("utf-8")
@@ -168,6 +195,7 @@ async def export_items_json(
 async def export_iocs_txt(
     days: int = Query(7),
     type: Optional[str] = Query(None, description="ip, hash, domain, url, or all"),
+    user: dict = Depends(_require_auth),
 ):
     rows = await _get_ioc_rows(days, type)
     lines = [r["ioc_value"] for r in rows]
@@ -187,6 +215,7 @@ async def export_iocs_txt(
 async def export_iocs_csv(
     days: int = Query(7),
     type: Optional[str] = Query(None),
+    user: dict = Depends(_require_auth),
 ):
     rows = await _get_ioc_rows(days, type)
     buf = io.StringIO()
@@ -221,6 +250,7 @@ async def export_iocs_csv(
 async def export_iocs_stix(
     days: int = Query(7),
     type: Optional[str] = Query(None),
+    user: dict = Depends(_require_auth),
 ):
     rows = await _get_ioc_rows(days, type)
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -293,7 +323,7 @@ async def _get_ioc_rows(days: int, ioc_type_filter: Optional[str]) -> list[dict]
 # ---------------------------------------------------------------------------
 
 @router.get("/clients/{client_id}/export/remediation.csv")
-async def export_remediation_csv(client_id: str):
+async def export_remediation_csv(client_id: str, user: dict = Depends(_require_auth)):
     rows = await _get_remediation_rows(client_id)
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -330,7 +360,7 @@ async def export_remediation_csv(client_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/clients/{client_id}/export/remediation.xlsx")
-async def export_remediation_xlsx(client_id: str):
+async def export_remediation_xlsx(client_id: str, user: dict = Depends(_require_auth)):
     import openpyxl
     from openpyxl.styles import PatternFill, Font
     from openpyxl.utils import get_column_letter
@@ -505,7 +535,7 @@ def _make_rules(item: dict) -> tuple[str, str, str]:
 
 
 @router.get("/clients/{client_id}/export/detection-rules.zip")
-async def export_detection_rules_zip(client_id: str):
+async def export_detection_rules_zip(client_id: str, user: dict = Depends(_require_auth)):
     from db import database as db
     items = await db.get_items(severity="CRITICAL,HIGH", client_id=client_id, limit=20)
     if not items:
@@ -554,6 +584,7 @@ async def export_detection_rules_zip(client_id: str):
 async def client_report_html_preview(
     client_id: str,
     days: int = Query(30, ge=1, le=365),
+    user: dict = Depends(_require_auth),
 ):
     """Browser-renderable HTML report with a Download PDF button at the top."""
     from db import database as db
@@ -574,7 +605,7 @@ async def client_report_html_preview(
 
 
 @router.post("/clients/{client_id}/export/push-rules-github")
-async def push_rules_github(client_id: str, body: dict):
+async def push_rules_github(client_id: str, body: dict, user: dict = Depends(_require_auth)):
     """Push detection rules to a GitHub repo via the Contents API."""
     repo = body.get("repo", "")
     token = body.get("token", "")

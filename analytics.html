@@ -613,7 +613,7 @@ function exportCharts() {
 }
 
 function exportAnalyticsReport() {
-  let url = '/api/v1/export/items.csv?limit=5000';
+  let url = '/api/v1/export/items.csv?limit=5000&token=' + encodeURIComponent(getToken());
   if (state.client_id) url += '&client_id=' + state.client_id;
   if (state.days) url += '&days=' + state.days;
   window.open(url, '_blank');

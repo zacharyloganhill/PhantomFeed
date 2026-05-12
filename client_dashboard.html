@@ -195,6 +195,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="tab-btn" onclick="switchTab('riskportfolio')">Risk Portfolio</button>
       <button class="tab-btn" onclick="switchTab('compliance')">Compliance</button>
       <button class="tab-btn" onclick="switchTab('findings')">Scan Findings</button>
+      <button class="tab-btn" onclick="switchTab('audit')">Audit Log</button>
     </div>
 
     <!-- FEED TAB -->
@@ -431,6 +432,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="findings-list" class="item-list"></div>
     </div>
 
+    <!-- AUDIT LOG TAB -->
+    <div class="tab-pane" id="tab-audit">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Client Audit Log</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn" onclick="loadClientAudit()">↻ Refresh</button>
+          <a id="auditCsvLink" href="#" download class="btn sm primary">⬇ Export CSV</a>
+        </div>
+      </div>
+      <div id="audit-list"></div>
+      <div id="audit-pagination" style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:var(--muted)"></div>
+    </div>
+
   </div><!-- .main -->
 </div><!-- .layout -->
 
@@ -480,7 +494,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
-  const loaders = { darkweb: ['dwAlerts', loadDarkwebAlerts], tabletop: ['tabletopList', loadTabletops], supplychain: ['vendorList', loadSupplyChain], riskportfolio: ['riskItemsList', loadRiskPortfolio], remediation: ['remItems', loadRemediations], compliance: ['ksi-grid', loadComplianceTab], findings: ['findings-list', loadScanFindings] };
+  const loaders = { darkweb: ['dwAlerts', loadDarkwebAlerts], tabletop: ['tabletopList', loadTabletops], supplychain: ['vendorList', loadSupplyChain], riskportfolio: ['riskItemsList', loadRiskPortfolio], remediation: ['remItems', loadRemediations], compliance: ['ksi-grid', loadComplianceTab], findings: ['findings-list', loadScanFindings], audit: ['audit-list', loadClientAudit] };
   if (loaders[name]) {
     const [elId, fn] = loaders[name];
     const el = document.getElementById(elId);
@@ -1169,6 +1183,68 @@ function renderFindings() {
   }
 }
 
+// ── CLIENT AUDIT LOG ─────────────────────────────────────────────────────────
+
+let _auditOffset = 0;
+const _auditLimit = 100;
+
+async function loadClientAudit() {
+  if (!clientId) return;
+  const csvLink = document.getElementById('auditCsvLink');
+  if (csvLink) csvLink.href = `${API}/clients/${clientId}/audit.csv?token=${token}`;
+
+  const list = document.getElementById('audit-list');
+  list.innerHTML = '<div class="empty-state" style="padding:30px"><div style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:8px"></div><br>Loading audit log…</div>';
+
+  const params = new URLSearchParams({ limit: _auditLimit, offset: _auditOffset });
+  const r = await fetch(`${API}/clients/${clientId}/audit?${params}`, { headers: hdr() });
+  if (!r || !r.ok) { list.innerHTML = '<div class="empty-state">Failed to load audit log</div>'; return; }
+  const data = await r.json();
+  const events = data.events || [];
+  const total  = data.total  || 0;
+
+  if (!events.length) {
+    list.innerHTML = '<div class="empty-state">No audit events recorded for this client</div>';
+    document.getElementById('audit-pagination').innerHTML = '';
+    return;
+  }
+
+  const methodColor = { GET:'var(--teal)', POST:'var(--blue)', PUT:'var(--amber)', DELETE:'var(--red)', PATCH:'var(--purple)' };
+  list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:var(--bg3);color:var(--muted)">
+      <th style="padding:7px 10px;text-align:left;font-family:var(--mono);font-size:8px;letter-spacing:1px">TIME</th>
+      <th style="padding:7px 10px;text-align:left;font-family:var(--mono);font-size:8px;letter-spacing:1px">EVENT</th>
+      <th style="padding:7px 10px;text-align:left;font-family:var(--mono);font-size:8px;letter-spacing:1px">USER</th>
+      <th style="padding:7px 10px;text-align:left;font-family:var(--mono);font-size:8px;letter-spacing:1px">METHOD</th>
+      <th style="padding:7px 10px;text-align:left;font-family:var(--mono);font-size:8px;letter-spacing:1px">PATH</th>
+      <th style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:8px;letter-spacing:1px">STATUS</th>
+      <th style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:8px;letter-spacing:1px">MS</th>
+    </tr></thead>
+    <tbody>${events.map((e, i) => {
+      const ts = e.timestamp ? new Date(e.timestamp + 'Z').toLocaleString() : '—';
+      const mc = methodColor[e.method] || 'var(--muted)';
+      const sc = e.status_code >= 400 ? 'var(--red)' : e.status_code >= 300 ? 'var(--amber)' : 'var(--teal)';
+      return `<tr style="background:${i%2?'var(--bg2)':'var(--bg3)'}">
+        <td style="padding:6px 10px;color:var(--muted);font-family:var(--mono);font-size:9px">${esc(ts)}</td>
+        <td style="padding:6px 10px">${esc(e.event_type||'—')}</td>
+        <td style="padding:6px 10px;color:var(--muted)">${esc(e.username||'—')}</td>
+        <td style="padding:6px 10px;font-family:var(--mono);font-size:9px;color:${mc}">${esc(e.method||'—')}</td>
+        <td style="padding:6px 10px;font-family:var(--mono);font-size:9px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.path||'—')}</td>
+        <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:${sc}">${e.status_code||'—'}</td>
+        <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted)">${e.duration_ms!=null?Math.round(e.duration_ms):'—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+
+  const totalPages = Math.ceil(total / _auditLimit);
+  const curPage = Math.floor(_auditOffset / _auditLimit) + 1;
+  const pg = document.getElementById('audit-pagination');
+  pg.innerHTML = `
+    <button class="btn sm" onclick="_auditOffset=Math.max(0,_auditOffset-${_auditLimit});loadClientAudit()" ${_auditOffset===0?'disabled':''}>← Prev</button>
+    <span>Page ${curPage} / ${totalPages} &nbsp;·&nbsp; ${total.toLocaleString()} events</span>
+    <button class="btn sm" onclick="_auditOffset=_auditOffset+${_auditLimit};loadClientAudit()" ${_auditOffset+_auditLimit>=total?'disabled':''}>Next →</button>`;
+}
+
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 
 async function loadNotifications() {
@@ -1259,6 +1335,7 @@ setInterval(() => {
   else if (_activeTab === 'darkweb') loadDarkwebAlerts();
   else if (_activeTab === 'remediation') loadRemediations();
   else if (_activeTab === 'findings') loadScanFindings();
+  else if (_activeTab === 'audit') loadClientAudit();
 }, 60000);
 </script>
 <script src="/nav-component.js"></script>
