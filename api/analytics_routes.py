@@ -2,7 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from auth.auth import get_current_user
 from db import database as db
 
 router = APIRouter()
@@ -16,6 +17,7 @@ def _cutoff(days: int) -> str:
 async def trend(
     client_id: Optional[str] = Query(None),
     days: int = Query(90, ge=7, le=365),
+    _: dict = Depends(get_current_user),
 ):
     database = db.get_db()
     cut = _cutoff(days)
@@ -49,6 +51,7 @@ async def trend(
 async def by_vendor(
     client_id: Optional[str] = Query(None),
     days: int = Query(30, ge=7, le=365),
+    _: dict = Depends(get_current_user),
 ):
     database = db.get_db()
     cut = _cutoff(days)
@@ -78,6 +81,7 @@ async def by_vendor(
 async def by_category(
     client_id: Optional[str] = Query(None),
     days: int = Query(30, ge=7, le=365),
+    _: dict = Depends(get_current_user),
 ):
     database = db.get_db()
     cut = _cutoff(days)
@@ -96,6 +100,7 @@ async def by_category(
 async def heatmap(
     client_id: Optional[str] = Query(None),
     days: int = Query(30, ge=7, le=365),
+    _: dict = Depends(get_current_user),
 ):
     database = db.get_db()
     cut = _cutoff(days)
@@ -128,6 +133,7 @@ async def heatmap(
 async def remediation_trend(
     client_id: Optional[str] = Query(None),
     days: int = Query(90, ge=30, le=365),
+    _: dict = Depends(get_current_user),
 ):
     if not client_id:
         return {"days": days, "data": []}
@@ -150,6 +156,7 @@ async def remediation_trend(
 async def top_risks(
     client_id: Optional[str] = Query(None),
     limit: int = Query(10, ge=1, le=50),
+    _: dict = Depends(get_current_user),
 ):
     items = await db.get_items(limit=limit, sort="risk")
     if client_id:
@@ -162,6 +169,7 @@ async def top_risks(
 async def summary(
     client_id: Optional[str] = Query(None),
     days: int = Query(30, ge=7, le=365),
+    _: dict = Depends(get_current_user),
 ):
     database = db.get_db()
     cut = _cutoff(days)
@@ -203,28 +211,28 @@ async def summary(
 # ── Posture & Benchmarking ──────────────────────────────────────────────────
 
 @router.get("/clients/{client_id}/posture", summary="Calculate posture score for a client")
-async def client_posture(client_id: str):
+async def client_posture(client_id: str, _: dict = Depends(get_current_user)):
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.calculate_posture(client_id)
 
 
 @router.get("/clients/{client_id}/posture/history", summary="Posture score history")
-async def posture_history(client_id: str, limit: int = Query(30, ge=1, le=90)):
+async def posture_history(client_id: str, limit: int = Query(30, ge=1, le=90), _: dict = Depends(get_current_user)):
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.get_posture_history(client_id, limit=limit)
 
 
 @router.get("/benchmarks/{industry}", summary="Industry benchmark statistics")
-async def industry_benchmark(industry: str):
+async def industry_benchmark(industry: str, _: dict = Depends(get_current_user)):
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.get_industry_benchmark(industry)
 
 
 @router.get("/benchmarks", summary="All clients ranked by posture score")
-async def all_clients_ranking():
+async def all_clients_ranking(_: dict = Depends(get_current_user)):
     from analytics.benchmarking import BenchmarkingEngine
     engine = BenchmarkingEngine()
     return await engine.get_all_clients_ranking()
@@ -233,12 +241,12 @@ async def all_clients_ranking():
 # ── Breach Cost & ROI ──────────────────────────────────────────────────────
 
 @router.get("/clients/{client_id}/risk-portfolio", summary="Full breach cost and ROI analysis")
-async def risk_portfolio(client_id: str):
+async def risk_portfolio(client_id: str, _: dict = Depends(get_current_user)):
     from analytics.breach_cost import get_client_risk_portfolio
     return await get_client_risk_portfolio(client_id)
 
 
 @router.get("/breach-cost/industries", summary="IBM 2024 breach cost by industry")
-async def breach_cost_industries():
+async def breach_cost_industries(_: dict = Depends(get_current_user)):
     from analytics.breach_cost import INDUSTRY_BREACH_COSTS
     return {"source": "IBM Cost of a Data Breach Report 2024", "costs": INDUSTRY_BREACH_COSTS}

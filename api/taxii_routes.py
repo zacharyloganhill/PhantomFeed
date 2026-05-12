@@ -1,6 +1,7 @@
 """PhantomFeed — TAXII API Routes"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from auth.auth import get_current_user
 from ingest.taxii_feeds import get_taxii_status, build_taxii_fetchers
 import config
 
@@ -8,13 +9,13 @@ router = APIRouter()
 
 
 @router.get("/taxii/sources", summary="List configured TAXII servers and connection status")
-async def list_taxii_sources():
+async def list_taxii_sources(_: dict = Depends(get_current_user)):
     status = await get_taxii_status()
     return {"sources": status}
 
 
 @router.post("/taxii/test/{feed_id}", summary="Test a TAXII connection")
-async def test_taxii(feed_id: str):
+async def test_taxii(feed_id: str, _: dict = Depends(get_current_user)):
     cfg = next((f for f in config.TAXII_FEEDS if f["id"] == feed_id), None)
     if not cfg:
         raise HTTPException(status_code=404, detail=f"Unknown TAXII feed: {feed_id}")

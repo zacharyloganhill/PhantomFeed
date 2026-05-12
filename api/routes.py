@@ -4,8 +4,9 @@ Auto-docs available at http://localhost:8000/docs
 """
 
 import json
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from typing import Optional
+from auth.auth import get_current_user
 from db import database as db
 from ingest import scheduler
 from ingest.risk_score import score_item
@@ -26,6 +27,7 @@ async def list_items(
     exposed_only: Optional[bool] = Query(None, description="When client_id set: show only items with confirmed exposures"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    _: dict = Depends(get_current_user),
 ):
     # Resolve client stack profile into SQL-level filters
     stack_vendors = None
@@ -70,7 +72,7 @@ async def list_items(
 
 
 @router.get("/items/{item_id}", summary="Get a single threat item by ID")
-async def get_item(item_id: str):
+async def get_item(item_id: str, _: dict = Depends(get_current_user)):
     item = await db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -78,37 +80,37 @@ async def get_item(item_id: str):
 
 
 @router.post("/items/{item_id}/read", summary="Mark an item as read")
-async def mark_read(item_id: str):
+async def mark_read(item_id: str, _: dict = Depends(get_current_user)):
     await db.mark_read(item_id)
     return {"status": "ok", "item_id": item_id}
 
 
 @router.post("/items/read-all", summary="Mark all (or all in a feed) as read")
-async def mark_all_read(feed_id: Optional[str] = Query(None)):
+async def mark_all_read(feed_id: Optional[str] = Query(None), _: dict = Depends(get_current_user)):
     await db.mark_all_read(feed_id=feed_id)
     return {"status": "ok"}
 
 
 @router.get("/stats", summary="Counts, feed breakdown, and ingestion status")
-async def stats():
+async def stats(_: dict = Depends(get_current_user)):
     return await db.get_stats()
 
 
 @router.get("/feeds", summary="List all registered feed IDs")
-async def list_feeds():
+async def list_feeds(_: dict = Depends(get_current_user)):
     feed_ids = scheduler.get_feed_ids()
     return {"feeds": feed_ids}
 
 
 @router.post("/refresh", summary="Trigger an immediate poll of all feeds")
-async def refresh_all(background_tasks: BackgroundTasks):
+async def refresh_all(background_tasks: BackgroundTasks, _: dict = Depends(get_current_user)):
     """Fires all fetchers in the background. Returns immediately."""
     background_tasks.add_task(scheduler.run_all)
     return {"status": "refresh_started", "message": "All feeds are being polled in the background."}
 
 
 @router.post("/refresh/{feed_id}", summary="Trigger an immediate poll of one feed")
-async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks):
+async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks, _: dict = Depends(get_current_user)):
     feed_ids = scheduler.get_feed_ids()
     if feed_id not in feed_ids:
         raise HTTPException(status_code=404, detail=f"Unknown feed: {feed_id}. Known feeds: {feed_ids}")
@@ -117,13 +119,13 @@ async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks):
 
 
 @router.delete("/items/purge", summary="Manually purge items older than retention period")
-async def purge():
+async def purge(_: dict = Depends(get_current_user)):
     deleted = await db.purge_old_items()
     return {"status": "ok", "deleted": deleted}
 
 
 @router.post("/items/{item_id}/rescore", summary="Recompute risk score for a single item")
-async def rescore_item(item_id: str):
+async def rescore_item(item_id: str, _: dict = Depends(get_current_user)):
     item = await db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -144,6 +146,6 @@ async def _rescore_all_task():
 
 
 @router.post("/rescore-all", summary="Recompute risk scores for all items in the background")
-async def rescore_all(background_tasks: BackgroundTasks):
+async def rescore_all(background_tasks: BackgroundTasks, _: dict = Depends(get_current_user)):
     background_tasks.add_task(_rescore_all_task)
     return {"status": "rescore_started"}

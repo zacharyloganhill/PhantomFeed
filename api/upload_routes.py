@@ -20,10 +20,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
+
+from auth.auth import get_current_user
 
 TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -87,6 +89,7 @@ async def upload_scan(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     client_id: Optional[str] = Query(None),
+    _: dict = Depends(get_current_user),
 ):
     """Auto-detect scan format, parse, return preview."""
     if background_tasks:
@@ -130,7 +133,7 @@ async def upload_scan(
 # ---------------------------------------------------------------------------
 
 @router.post("/upload/scan/{upload_id}/confirm")
-async def confirm_scan(upload_id: str):
+async def confirm_scan(upload_id: str, _: dict = Depends(get_current_user)):
     """Confirm and import a previously previewed scan file."""
     from uploads.upload_log import get_upload_log, update_upload_log
     log = await get_upload_log(upload_id)
@@ -254,6 +257,7 @@ async def confirm_scan(upload_id: str):
 async def upload_assets(
     file: UploadFile = File(...),
     client_id: Optional[str] = Query(None),
+    _: dict = Depends(get_current_user),
 ):
     """Preview an asset CSV/XLSX upload."""
     data = await file.read()
@@ -290,6 +294,7 @@ async def upload_assets(
 async def confirm_assets(
     upload_id: str,
     body: Optional[dict] = None,
+    _: dict = Depends(get_current_user),
 ):
     """Confirm asset import with optional field mapping override."""
     from uploads.upload_log import get_upload_log, update_upload_log
@@ -353,6 +358,7 @@ async def upload_iocs(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     client_id: Optional[str] = Query(None),
+    _: dict = Depends(get_current_user),
 ):
     """Preview IOC list; triggers enrichment as background task."""
     data = await file.read()
@@ -401,7 +407,7 @@ async def upload_iocs(
 # ---------------------------------------------------------------------------
 
 @router.post("/upload/stix")
-async def upload_stix(file: UploadFile = File(...)):
+async def upload_stix(file: UploadFile = File(...), _: dict = Depends(get_current_user)):
     """Parse a STIX 2.1 JSON bundle and import objects as threat items."""
     data = await file.read()
     filename = file.filename or "bundle.json"
@@ -441,6 +447,7 @@ async def upload_stix(file: UploadFile = File(...)):
 @router.post("/upload/clients")
 async def upload_clients(
     file: UploadFile = File(...),
+    _: dict = Depends(get_current_user),
 ):
     """Preview bulk client import from CSV/XLSX."""
     data = await file.read()
@@ -465,7 +472,7 @@ async def upload_clients(
 
 
 @router.post("/upload/clients/{upload_id}/confirm")
-async def confirm_clients(upload_id: str):
+async def confirm_clients(upload_id: str, _: dict = Depends(get_current_user)):
     """Confirm bulk client import."""
     from uploads.upload_log import get_upload_log, update_upload_log
     log = await get_upload_log(upload_id)
@@ -514,6 +521,7 @@ async def confirm_clients(upload_id: str):
 async def upload_history(
     client_id: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
+    _: dict = Depends(get_current_user),
 ):
     from uploads.upload_log import list_upload_logs
     return await list_upload_logs(client_id=client_id, limit=limit)
@@ -549,7 +557,7 @@ TEMPLATES = {
 
 
 @router.get("/upload/templates/{template_type}")
-async def download_template(template_type: str):
+async def download_template(template_type: str, _: dict = Depends(get_current_user)):
     tmpl = TEMPLATES.get(template_type)
     if not tmpl:
         raise HTTPException(404, f"Unknown template type '{template_type}'. Choose: {', '.join(TEMPLATES)}")
