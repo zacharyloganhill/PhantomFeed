@@ -3,7 +3,7 @@
 import time
 from collections import defaultdict
 from fastapi import APIRouter, HTTPException, status, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from auth.auth import verify_password, create_access_token, get_current_user
 from fastapi import Depends
@@ -39,6 +39,15 @@ def _clear_failures(username: str) -> None:
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+    @field_validator("username", "password")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("cannot be empty")
+        if len(v) > 256:
+            raise ValueError("too long")
+        return v
 
 
 @router.post("/login", summary="Login and receive a JWT token")

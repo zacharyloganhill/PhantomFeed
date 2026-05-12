@@ -5,7 +5,7 @@ import io
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from auth.auth import require_admin, decode_token
 from db import database as db
@@ -42,6 +42,16 @@ class ClientCreate(BaseModel):
     contact_email: str = ""
     stack_profile: dict = {}
 
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name cannot be empty")
+        if len(v) > 200:
+            raise ValueError("name too long")
+        return v
+
 
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
@@ -53,12 +63,42 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+    @field_validator("username")
+    @classmethod
+    def username_valid(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 1:
+            raise ValueError("username cannot be empty")
+        if len(v) > 100:
+            raise ValueError("username too long")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
+
 
 class UserUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
-    role: str = "analyst"
     client_id: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def role_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("admin", "analyst", "viewer"):
+            raise ValueError("role must be admin, analyst, or viewer")
+        return v
 
 
 # ── Clients ───────────────────────────────────────────────────────────────────
