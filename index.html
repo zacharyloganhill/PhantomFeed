@@ -234,7 +234,11 @@ async function loadStats() {
     document.getElementById('statRow').innerHTML = chips.map(c =>
       `<div class="stat-chip"><div class="stat-chip-label">${c.label}</div><div class="stat-chip-val ${c.cls}">${Number(c.val).toLocaleString()}</div></div>`
     ).join('');
-  } catch (e) { console.error('stats', e); }
+  } catch (e) {
+    document.getElementById('statRow').innerHTML =
+      '<div class="stat-chip" style="flex:1"><div class="stat-chip-label">Status</div>' +
+      '<div class="stat-chip-val" style="font-size:11px;color:var(--muted)">Stats unavailable</div></div>';
+  }
 }
 
 async function loadScanners() {

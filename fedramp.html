@@ -301,7 +301,11 @@ async function loadClients() {
     const stored = localStorage.getItem('fedramp_client');
     if (stored) sel.value = stored;
     if (sel.value) loadDashboard();
-  } catch(e) { console.error('Load clients:', e); }
+  } catch(e) {
+    const sel = document.getElementById('client-sel');
+    if (sel) sel.innerHTML = '<option value="">Error loading clients</option>';
+    if (window.showToast) showToast('Failed to load clients — check your connection', 'error');
+  }
 }
 
 async function loadDashboard() {
@@ -505,7 +509,9 @@ async function triggerKSIValidation() {
       document.getElementById('last-refreshed').textContent = 'KSI validation running...';
       setTimeout(() => loadKSI(clientId), 5000);
     }
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    if (window.showToast) showToast('KSI validation failed — ' + (e.message || 'unknown error'), 'error');
+  }
 }
 
 function downloadBundle() {

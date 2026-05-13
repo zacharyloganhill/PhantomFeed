@@ -8,6 +8,40 @@
 (function () {
   'use strict';
 
+  // ── Global toast system ───────────────────────────────────────────────────
+  // window.showToast(msg, type) — type: 'info' | 'ok' | 'warn' | 'error'
+  (function mountToast() {
+    const s = document.createElement('style');
+    s.textContent = `
+      #tp-toast-rack{position:fixed;bottom:20px;right:20px;z-index:100000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+      .tp-toast{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.5px;padding:9px 16px;border:1px solid;max-width:360px;pointer-events:auto;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;color:#c9d4e3}
+      .tp-toast.show{opacity:1;transform:translateY(0)}
+      .tp-toast.info{background:#0c0f14;border-color:rgba(255,255,255,.12)}
+      .tp-toast.ok{background:#0c0f14;border-color:rgba(61,214,140,.4);color:#3dd68c}
+      .tp-toast.warn{background:#0c0f14;border-color:rgba(232,165,48,.4);color:#e8a530}
+      .tp-toast.error{background:#0c0f14;border-color:rgba(240,89,90,.4);color:#f0595a}
+    `;
+    document.head.appendChild(s);
+    const rack = document.createElement('div');
+    rack.id = 'tp-toast-rack';
+    document.body.appendChild(rack);
+  })();
+
+  window.showToast = function(msg, type) {
+    type = type || 'info';
+    const rack = document.getElementById('tp-toast-rack');
+    if (!rack) return;
+    const el = document.createElement('div');
+    el.className = 'tp-toast ' + type;
+    el.textContent = msg;
+    rack.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(function() {
+      el.classList.remove('show');
+      setTimeout(function() { el.remove(); }, 220);
+    }, 3500);
+  };
+
   const token = localStorage.getItem('token');
   const path  = location.pathname;
 
@@ -94,7 +128,12 @@
   topbar.appendChild(right);
 
   window.navLogout = function () {
+    const t = localStorage.getItem('token');
     localStorage.clear();
+    if (t) {
+      fetch('/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })
+        .catch(function() {});
+    }
     location.href = '/login.html';
   };
 
@@ -140,7 +179,11 @@
       const r = await fetch('/api/v1/notifications?limit=6', {
         headers: { Authorization: 'Bearer ' + token }
       });
-      if (!r.ok) return;
+      if (!r.ok) {
+        const body = document.getElementById('nav-notif-body');
+        if (body) body.innerHTML = '<div class="nav-notif-empty">Unavailable</div>';
+        return;
+      }
       const d = await r.json();
       const items = d.notifications || [];
       const unread = items.filter(n => !n.read).length;
@@ -167,7 +210,10 @@
           <div class="nav-notif-meta">${detail ? detail + ' · ' : ''}${ts}</div>
         </div>`;
       }).join('');
-    } catch(e) {}
+    } catch(e) {
+      const body = document.getElementById('nav-notif-body');
+      if (body) body.innerHTML = '<div class="nav-notif-empty">Unavailable</div>';
+    }
   }
 
   navLoadNotifications();
