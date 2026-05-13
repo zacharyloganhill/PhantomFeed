@@ -13,6 +13,15 @@ HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", 8000))
 DB_PATH = os.getenv("DB_PATH", "./threatpulse.db")
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 90))
+# Comma-separated list of allowed CORS origins; defaults to localhost only
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ORIGINS",
+        f"http://localhost:{os.getenv('PORT', '8000')},http://127.0.0.1:{os.getenv('PORT', '8000')}",
+    ).split(",")
+    if o.strip()
+]
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
 NVD_API_KEY = os.getenv("NVD_API_KEY", "")

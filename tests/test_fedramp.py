@@ -634,3 +634,49 @@ def test_pydantic_user_create_password_length():
         pass
     # Valid password should not raise
     UserCreate(username="testuser", password="longpassword123")
+
+
+def test_webhook_url_ssrf_validation():
+    """WebhookCreate rejects private/loopback URLs and accepts public ones."""
+    from pydantic import ValidationError
+    from api.admin_routes import WebhookCreate
+
+    bad_urls = [
+        "http://localhost/hook",
+        "http://127.0.0.1/hook",
+        "http://10.0.0.5/hook",
+        "http://192.168.1.1/hook",
+        "http://172.20.0.1/hook",
+        "http://169.254.169.254/latest/meta-data/",
+        "ftp://example.com/hook",
+    ]
+    for url in bad_urls:
+        try:
+            WebhookCreate(webhook_type="generic", url=url)
+            assert False, f"Expected ValidationError for {url}"
+        except ValidationError:
+            pass
+
+    # Public HTTPS URL should be accepted
+    wh = WebhookCreate(webhook_type="generic", url="https://hooks.example.com/abc")
+    assert wh.url == "https://hooks.example.com/abc"
+
+
+def test_rate_limiter_enforces_limit():
+    """check_rate_limit raises HTTP 429 after max_calls exceeded."""
+    import time
+    from fastapi import HTTPException
+    from api.rate_limit import _store, check_rate_limit
+
+    key = f"test_rate_{time.monotonic()}"
+    _store.pop(key, None)  # clean slate
+
+    check_rate_limit(key, max_calls=3, window_seconds=60)
+    check_rate_limit(key, max_calls=3, window_seconds=60)
+    check_rate_limit(key, max_calls=3, window_seconds=60)
+
+    try:
+        check_rate_limit(key, max_calls=3, window_seconds=60)
+        assert False, "Expected HTTP 429"
+    except HTTPException as e:
+        assert e.status_code == 429

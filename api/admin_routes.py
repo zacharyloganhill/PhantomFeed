@@ -2,7 +2,11 @@
 
 import csv
 import io
+import ipaddress
+import re
 from typing import Optional
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel, field_validator
@@ -329,12 +333,60 @@ async def delete_asset(client_id: str, asset_id: str, _: dict = Depends(require_
 
 # ── Webhooks ──────────────────────────────────────────────────────────────────
 
+# RFC-1918 + loopback + link-local ranges that must never be webhook targets
+_PRIVATE_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local / AWS metadata
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+def _validate_webhook_url(url: str) -> str:
+    if not url:
+        raise ValueError("Webhook URL is required")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Webhook URL must use http or https")
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("Webhook URL must contain a valid hostname")
+    # Reject bare 'localhost' and variants
+    if re.match(r"^(localhost|127\.|0\.0\.0\.0)", host):
+        raise ValueError("Webhook URL must not target localhost or loopback addresses")
+    # Reject numeric IPs in private ranges
+    try:
+        addr = ipaddress.ip_address(host)
+        if any(addr in net for net in _PRIVATE_NETS):
+            raise ValueError("Webhook URL must not target private/reserved IP addresses")
+    except ValueError as exc:
+        if "Webhook URL" in str(exc):
+            raise
+        # Not an IP address — hostname; allow it (DNS resolution happens at fire time)
+    return url
+
+
 class WebhookCreate(BaseModel):
     webhook_type: str  # generic, slack, splunk_hec, sentinel
     url: str
     secret: str = ""
     min_severity: str = "HIGH"
     categories: list = []
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        return _validate_webhook_url(v)
+
+    @field_validator("webhook_type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        allowed = {"generic", "slack", "splunk_hec", "sentinel"}
+        if v not in allowed:
+            raise ValueError(f"webhook_type must be one of {sorted(allowed)}")
+        return v
 
 
 class WebhookUpdate(BaseModel):
@@ -343,6 +395,13 @@ class WebhookUpdate(BaseModel):
     min_severity: Optional[str] = None
     categories: Optional[list] = None
     is_active: Optional[int] = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return _validate_webhook_url(v)
+        return v
 
 
 @router.get("/clients/{client_id}/webhooks", summary="List webhooks for a client")

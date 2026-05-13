@@ -6,6 +6,7 @@ Auto-docs available at http://localhost:8000/docs
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from typing import Optional
+from api.rate_limit import check_rate_limit
 from auth.auth import get_current_user, require_admin
 from db import database as db
 from ingest import scheduler
@@ -96,8 +97,14 @@ async def mark_all_read(feed_id: Optional[str] = Query(None), _: dict = Depends(
 
 
 @router.get("/stats", summary="Counts, feed breakdown, and ingestion status")
-async def stats(_: dict = Depends(get_current_user)):
-    return await db.get_stats()
+async def stats(user: dict = Depends(get_current_user)):
+    data = await db.get_stats()
+    if user.get("role") != "admin":
+        # Strip cross-client counts — not relevant to non-admin users
+        data.pop("client_count", None)
+        data.pop("scanner_count", None)
+        data.pop("darkweb_alert_count", None)
+    return data
 
 
 @router.get("/feeds", summary="List all registered feed IDs")
@@ -107,14 +114,18 @@ async def list_feeds(_: dict = Depends(get_current_user)):
 
 
 @router.post("/refresh", summary="Trigger an immediate poll of all feeds")
-async def refresh_all(background_tasks: BackgroundTasks, _: dict = Depends(require_admin)):
+async def refresh_all(background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):
     """Fires all fetchers in the background. Returns immediately."""
+    # 3 per 5 min — heavy background work; prevent accidental storm
+    check_rate_limit(f"refresh:{admin.get('sub', 'anon')}", 3, 300)
     background_tasks.add_task(scheduler.run_all)
     return {"status": "refresh_started", "message": "All feeds are being polled in the background."}
 
 
 @router.post("/refresh/{feed_id}", summary="Trigger an immediate poll of one feed")
-async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks, _: dict = Depends(require_admin)):
+async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):
+    # 10 per 5 min per user — per-feed polls are lighter but still throttled
+    check_rate_limit(f"refresh_feed:{admin.get('sub', 'anon')}", 10, 300)
     feed_ids = scheduler.get_feed_ids()
     if feed_id not in feed_ids:
         raise HTTPException(status_code=404, detail=f"Unknown feed: {feed_id}. Known feeds: {feed_ids}")
@@ -123,7 +134,9 @@ async def refresh_feed(feed_id: str, background_tasks: BackgroundTasks, _: dict 
 
 
 @router.delete("/items/purge", summary="Manually purge items older than retention period")
-async def purge(_: dict = Depends(require_admin)):
+async def purge(admin: dict = Depends(require_admin)):
+    # 2 per hour — purge is a heavy write; severe rate limit
+    check_rate_limit(f"purge:{admin.get('sub', 'anon')}", 2, 3600)
     deleted = await db.purge_old_items()
     return {"status": "ok", "deleted": deleted}
 
@@ -150,6 +163,8 @@ async def _rescore_all_task():
 
 
 @router.post("/rescore-all", summary="Recompute risk scores for all items in the background")
-async def rescore_all(background_tasks: BackgroundTasks, _: dict = Depends(require_admin)):
+async def rescore_all(background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):
+    # 2 per hour — iterates up to 2000 items; prevent queueing multiple runs
+    check_rate_limit(f"rescore_all:{admin.get('sub', 'anon')}", 2, 3600)
     background_tasks.add_task(_rescore_all_task)
     return {"status": "rescore_started"}

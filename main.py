@@ -17,6 +17,7 @@ import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
@@ -24,6 +25,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 import config
+from api.rate_limit import check_rate_limit
 from auth.auth import get_current_user
 from db import database as db
 from ingest import scheduler
@@ -135,14 +137,19 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
+    # Disable built-in docs routes so we can gate them behind auth below
+    docs_url=None,
+    redoc_url=None,
 )
 
-# CORS — allows the frontend dashboard to call this API from any origin locally
+# CORS — only allow the origins this server is known to be served from.
+# Override with the CORS_ORIGINS env var (comma-separated) in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 # FedRAMP 20x audit logging middleware
@@ -188,8 +195,25 @@ app.include_router(nav_router, tags=["Navigation"])
 app.include_router(report_router, tags=["Reports"])
 
 
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui(_: dict = Depends(get_current_user)):
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="ThreatPulse API — Docs")
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_ui(_: dict = Depends(get_current_user)):
+    return get_redoc_html(openapi_url="/openapi.json", title="ThreatPulse API — ReDoc")
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_schema(_: dict = Depends(get_current_user)):
+    return app.openapi()
+
+
 @app.api_route("/api/ollama/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
-async def ollama_proxy(path: str, request: Request, _: dict = Depends(get_current_user)):
+async def ollama_proxy(path: str, request: Request, user: dict = Depends(get_current_user)):
+    # 30 req/min per user — prevents runaway LLM call loops
+    check_rate_limit(f"ollama:{user.get('sub', 'anon')}", 30, 60)
     body = await request.body()
 
     async def _stream():
