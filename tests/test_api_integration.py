@@ -92,6 +92,81 @@ class TestAuthEndpoints:
         assert me.status_code == 401
 
 
+# ── Change-password ───────────────────────────────────────────────────────────
+
+class TestChangePassword:
+    def test_change_password_requires_auth(self, client):
+        resp = client.post(
+            "/auth/change-password",
+            json={"current_password": "Admin1!", "new_password": "NewPass2!"},
+        )
+        assert resp.status_code == 401
+
+    def test_change_password_wrong_current(self, client, admin_headers):
+        resp = client.post(
+            "/auth/change-password",
+            json={"current_password": "WrongPass1!", "new_password": "NewPass2!"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 401
+        assert "incorrect" in resp.json()["detail"].lower()
+
+    def test_change_password_weak_new(self, client, admin_headers):
+        resp = client.post(
+            "/auth/change-password",
+            json={"current_password": "Admin1!", "new_password": "tooshort"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+
+    def test_change_password_same_as_current(self, client, admin_headers):
+        # Admin1! is 7 chars and doesn't satisfy complexity for the new-password field.
+        # Use a dedicated user whose password already passes complexity.
+        client.post(
+            "/api/v1/admin/users",
+            json={"username": "pw_same_user", "password": "SamePass1!", "role": "analyst"},
+            headers=admin_headers,
+        )
+        login = client.post("/auth/login", json={"username": "pw_same_user", "password": "SamePass1!"})
+        h = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+        resp = client.post(
+            "/auth/change-password",
+            json={"current_password": "SamePass1!", "new_password": "SamePass1!"},
+            headers=h,
+        )
+        assert resp.status_code == 400
+        assert "differ" in resp.json()["detail"].lower()
+
+    def test_change_password_invalidates_old_token(self, client, admin_headers):
+        """After a successful password change all prior sessions must be revoked."""
+        create = client.post(
+            "/api/v1/admin/users",
+            json={"username": "pw_change_user", "password": "OldPass1!", "role": "analyst"},
+            headers=admin_headers,
+        )
+        assert create.status_code == 200
+        login = client.post("/auth/login", json={"username": "pw_change_user", "password": "OldPass1!"})
+        old_token = login.json()["access_token"]
+        old_headers = {"Authorization": f"Bearer {old_token}"}
+
+        # Change password
+        resp = client.post(
+            "/auth/change-password",
+            json={"current_password": "OldPass1!", "new_password": "NewPass2!"},
+            headers=old_headers,
+        )
+        assert resp.status_code == 200
+
+        # Old token must now be rejected
+        me = client.get("/auth/me", headers=old_headers)
+        assert me.status_code == 401
+
+        # New password must work
+        new_login = client.post("/auth/login", json={"username": "pw_change_user", "password": "NewPass2!"})
+        assert new_login.status_code == 200
+
+
 # ── Security headers ──────────────────────────────────────────────────────────
 
 class TestSecurityHeaders:

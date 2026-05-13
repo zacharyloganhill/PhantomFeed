@@ -1,10 +1,13 @@
 """PhantomFeed — Authentication API Routes"""
 
+import re
 import time
 from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, field_validator
+
+_PASSWORD_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*[0-9!@#$%^&*()\-_=+\[\]{}|;:',.<>?/`~\\]).{8,}$")
 
 from auth.auth import verify_password, create_access_token, get_current_user, decode_token
 from fastapi import Depends
@@ -166,3 +169,68 @@ async def logout(
         ip_address=ip,
     )
     return {"status": "logged_out"}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("current_password", "new_password")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("cannot be empty")
+        return v
+
+    @field_validator("new_password")
+    @classmethod
+    def complexity(cls, v: str) -> str:
+        if not _PASSWORD_RE.match(v):
+            raise ValueError(
+                "password must be at least 8 characters and contain "
+                "at least one letter and one digit or special character"
+            )
+        return v
+
+
+@router.post("/change-password", summary="Change the current user's password")
+async def change_password(
+    req: ChangePasswordRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+):
+    """Verify the current password, set the new one, and invalidate all existing sessions."""
+    from db import database as db
+    from db.audit_log import log_event
+    from auth.auth import hash_password
+
+    if not verify_password(req.current_password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+
+    if req.new_password == req.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must differ from current password",
+        )
+
+    await db.update_user(user["id"], password_hash=hash_password(req.new_password))
+
+    # Bump token_version to invalidate every existing session
+    await db.bump_token_version(user["id"])
+    await db.revoke_all_user_sessions(user["id"])
+
+    ip = request.client.host if request.client else None
+    await log_event(
+        "password_changed",
+        user_id=user["id"],
+        username=user.get("username"),
+        method="POST",
+        path="/auth/change-password",
+        status_code=200,
+        ip_address=ip,
+    )
+    return {"status": "password_changed"}

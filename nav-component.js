@@ -155,7 +155,7 @@
   async function navLoadMe() {
     if (!token) return;
     try {
-      const r = await fetch('/api/v1/me', { headers: { Authorization: 'Bearer ' + token } });
+      const r = await fetch('/auth/me', { headers: { Authorization: 'Bearer ' + token } });
       if (!r.ok) {
         if (r.status === 401) { localStorage.removeItem('token'); location.href = '/login.html'; }
         return;

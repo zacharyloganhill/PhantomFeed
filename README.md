@@ -152,6 +152,7 @@ curl http://localhost:8000/api/v1/stats \
 | POST | `/auth/login` | Issue JWT — returns `access_token`, `role` |
 | POST | `/auth/logout` | Revoke current token immediately |
 | GET | `/auth/me` | Current user info (`username`, `role`, `client_id`) |
+| POST | `/auth/change-password` | Change own password — requires `current_password` + `new_password`; invalidates all existing sessions |
 
 ### Roles
 
