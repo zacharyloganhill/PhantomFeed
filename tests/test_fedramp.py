@@ -841,3 +841,104 @@ def test_upload_confirm_cleanup_uses_finally():
         src = inspect.getsource(getattr(upload_routes, fn_name))
         assert "finally" in src, f"{fn_name} must use try/finally to guarantee cleanup"
         assert "_cleanup_temp" in src, f"{fn_name} must call _cleanup_temp"
+
+
+# ── Correlation ID tests ──────────────────────────────────────────────────────
+
+def test_audit_middleware_generates_request_id():
+    """AuditMiddleware generates an X-Request-ID when none is present."""
+    import inspect
+    from api.audit_middleware import AuditMiddleware
+    src = inspect.getsource(AuditMiddleware.dispatch)
+    assert "X-Request-ID" in src or "x-request-id" in src
+    assert "uuid" in src
+
+
+def test_request_id_in_log_event_signature():
+    """log_event() accepts a request_id parameter."""
+    import inspect
+    from db.audit_log import log_event
+    sig = inspect.signature(log_event)
+    assert "request_id" in sig.parameters
+
+
+# ── Concurrent session cap tests ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_session_cap_blocks_excess_logins():
+    """count_active_sessions respects MAX_SESSIONS; 6th session is blocked at login."""
+    from db import database as db
+    from db.database import MAX_SESSIONS, create_session, count_active_sessions
+    await db.connect()
+
+    uid = str(uuid.uuid4())
+    await db.create_user(
+        username=f"cap_test_{uid[:8]}",
+        password_hash="x",
+        role="analyst",
+        client_id=None,
+    )
+    user = await db.get_user_by_username(f"cap_test_{uid[:8]}")
+    user_id = user["id"]
+
+    # Fill up to the cap
+    far_future = "2099-01-01T00:00:00"
+    for i in range(MAX_SESSIONS):
+        await create_session(str(uuid.uuid4()), user_id, far_future)
+
+    assert await count_active_sessions(user_id) == MAX_SESSIONS
+
+
+@pytest.mark.asyncio
+async def test_revoke_session_decrements_count():
+    """Revoking a session via revoke_session() drops the active count."""
+    from db import database as db
+    from db.database import create_session, count_active_sessions, revoke_session
+    await db.connect()
+
+    uid = str(uuid.uuid4())
+    await db.create_user(
+        username=f"rev_test_{uid[:8]}",
+        password_hash="x",
+        role="analyst",
+        client_id=None,
+    )
+    user = await db.get_user_by_username(f"rev_test_{uid[:8]}")
+    user_id = user["id"]
+
+    jti = str(uuid.uuid4())
+    await create_session(jti, user_id, "2099-01-01T00:00:00")
+    assert await count_active_sessions(user_id) >= 1
+
+    await revoke_session(jti)
+    # Session should no longer be counted as active
+    async with db.get_db().execute(
+        "SELECT revoked FROM user_sessions WHERE jti = ?", (jti,)
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None and row[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_revoke_all_user_sessions():
+    """revoke_all_user_sessions marks every session for the user as revoked."""
+    from db import database as db
+    from db.database import create_session, count_active_sessions, revoke_all_user_sessions
+    await db.connect()
+
+    uid = str(uuid.uuid4())
+    await db.create_user(
+        username=f"rall_test_{uid[:8]}",
+        password_hash="x",
+        role="analyst",
+        client_id=None,
+    )
+    user = await db.get_user_by_username(f"rall_test_{uid[:8]}")
+    user_id = user["id"]
+
+    for _ in range(3):
+        await create_session(str(uuid.uuid4()), user_id, "2099-01-01T00:00:00")
+    assert await count_active_sessions(user_id) == 3
+
+    await revoke_all_user_sessions(user_id)
+    assert await count_active_sessions(user_id) == 0

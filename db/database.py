@@ -417,6 +417,18 @@ CREATE TABLE IF NOT EXISTS user_item_reads (
 );
 """
 
+CREATE_USER_SESSIONS = """
+CREATE TABLE IF NOT EXISTS user_sessions (
+    jti        TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked    INTEGER DEFAULT 0
+);
+"""
+
+MAX_SESSIONS = 5  # maximum concurrent active sessions per user
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -450,6 +462,10 @@ PHASE5_MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;",
     "CREATE INDEX IF NOT EXISTS idx_token_denylist_expires ON token_denylist(expires_at);",
     "CREATE INDEX IF NOT EXISTS idx_user_item_reads_user ON user_item_reads(user_id);",
+]
+
+PHASE6_MIGRATIONS = [
+    "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id, revoked, expires_at);",
 ]
 
 _db: Optional[aiosqlite.Connection] = None
@@ -488,9 +504,10 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_PULL_HISTORY)
     await _db.execute(CREATE_TOKEN_DENYLIST)
     await _db.execute(CREATE_USER_ITEM_READS)
+    await _db.execute(CREATE_USER_SESSIONS)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
-    for migration in MIGRATIONS + PHASE3_MIGRATIONS + PHASE4_MIGRATIONS + PHASE5_MIGRATIONS:
+    for migration in MIGRATIONS + PHASE3_MIGRATIONS + PHASE4_MIGRATIONS + PHASE5_MIGRATIONS + PHASE6_MIGRATIONS:
         try:
             await _db.execute(migration)
         except Exception:
@@ -960,13 +977,47 @@ async def bump_token_version(user_id: str) -> None:
 
 
 async def purge_expired_tokens() -> int:
-    """Delete denylist entries whose tokens have already expired (routine cleanup)."""
+    """Delete denylist entries and sessions whose tokens have already expired."""
     db = get_db()
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await db.execute("DELETE FROM token_denylist WHERE expires_at < ?", (now,))
+    await db.execute("DELETE FROM user_sessions WHERE expires_at < ?", (now,))
     await db.commit()
-    # rowcount not reliable for DELETE without RETURNING; return 0 as sentinel
     return 0
+
+
+async def create_session(jti: str, user_id: str, expires_at: str) -> None:
+    db = get_db()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    await db.execute(
+        "INSERT OR IGNORE INTO user_sessions (jti, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (jti, user_id, now, expires_at),
+    )
+    await db.commit()
+
+
+async def count_active_sessions(user_id: str) -> int:
+    db = get_db()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    async with db.execute(
+        "SELECT COUNT(*) FROM user_sessions WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+        (user_id, now),
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def revoke_session(jti: str) -> None:
+    db = get_db()
+    await db.execute("UPDATE user_sessions SET revoked = 1 WHERE jti = ?", (jti,))
+    await db.commit()
+
+
+async def revoke_all_user_sessions(user_id: str) -> None:
+    """Mark all sessions for a user as revoked (used by force-logout)."""
+    db = get_db()
+    await db.execute("UPDATE user_sessions SET revoked = 1 WHERE user_id = ?", (user_id,))
+    await db.commit()
 
 
 # ── Asset CRUD ────────────────────────────────────────────────────────────────

@@ -80,12 +80,32 @@ async def login(req: LoginRequest, request: Request):
         )
 
     _clear_failures(req.username)
+
+    # Concurrent session cap
+    from db.database import count_active_sessions, create_session, MAX_SESSIONS
+    active = await count_active_sessions(user["id"])
+    if active >= MAX_SESSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Maximum concurrent sessions ({MAX_SESSIONS}) reached. Log out of another session first.",
+        )
+
     token = create_access_token({
         "sub": user["id"],
         "role": user["role"],
         "username": user["username"],
         "token_version": user.get("token_version") or 0,
     })
+
+    # Register session for cap tracking
+    from datetime import datetime, timezone as _tz
+    payload = decode_token(token)
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if jti and exp:
+        expires_at = datetime.fromtimestamp(exp, tz=_tz.utc).replace(tzinfo=None).isoformat()
+        await create_session(jti, user["id"], expires_at)
+
     await log_event(
         "login_success",
         user_id=user["id"],
@@ -130,9 +150,10 @@ async def logout(
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            from datetime import timezone as _tz
+            from datetime import datetime, timezone as _tz
             expires_at = datetime.fromtimestamp(exp, tz=_tz.utc).replace(tzinfo=None).isoformat()
             await db.revoke_token(jti, user["id"], expires_at)
+            await db.revoke_session(jti)
 
     ip = request.client.host if request.client else None
     await log_event(

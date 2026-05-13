@@ -265,6 +265,7 @@ async def revoke_user_tokens(user_id: str, admin: dict = Depends(require_admin))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     await db.bump_token_version(user_id)
+    await db.revoke_all_user_sessions(user_id)
     await log_event(
         "force_logout",
         user_id=admin["id"],

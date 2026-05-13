@@ -265,3 +265,65 @@ class TestPerUserReadState:
         # User B must still see it as new
         items_b = client.get("/api/v1/items?is_new=true", headers=hb).json()["items"]
         assert any(i["id"] == item_id for i in items_b), "User B should still see item as new"
+
+
+# ── Request correlation ID ────────────────────────────────────────────────────
+
+class TestCorrelationID:
+    def test_response_includes_x_request_id(self, client, admin_headers):
+        resp = client.get("/api/v1/stats", headers=admin_headers)
+        assert "x-request-id" in resp.headers, "Every API response must carry X-Request-ID"
+
+    def test_client_supplied_request_id_is_echoed(self, client, admin_headers):
+        custom_id = "test-correlation-abc-123"
+        resp = client.get(
+            "/api/v1/stats",
+            headers={**admin_headers, "X-Request-ID": custom_id},
+        )
+        assert resp.headers.get("x-request-id") == custom_id
+
+
+# ── Concurrent session cap ────────────────────────────────────────────────────
+
+class TestSessionCap:
+    def test_session_cap_enforced(self, client, admin_headers):
+        """6th concurrent login for the same user must return 429."""
+        from db.database import MAX_SESSIONS
+        client.post(
+            "/api/v1/admin/users",
+            json={"username": "cap_user", "password": "CapPass1!", "role": "analyst"},
+            headers=admin_headers,
+        )
+        creds = {"username": "cap_user", "password": "CapPass1!"}
+        for i in range(MAX_SESSIONS):
+            resp = client.post("/auth/login", json=creds)
+            assert resp.status_code == 200, f"Login {i+1} should succeed"
+
+        resp = client.post("/auth/login", json=creds)
+        assert resp.status_code == 429, "Login beyond cap must be rejected"
+        assert "session" in resp.json()["detail"].lower()
+
+    def test_logout_frees_session_slot(self, client, admin_headers):
+        """Logging out of one session allows a new login to succeed."""
+        from db.database import MAX_SESSIONS
+        client.post(
+            "/api/v1/admin/users",
+            json={"username": "cap_logout_user", "password": "CapPass2!", "role": "analyst"},
+            headers=admin_headers,
+        )
+        creds = {"username": "cap_logout_user", "password": "CapPass2!"}
+        tokens = []
+        for _ in range(MAX_SESSIONS):
+            resp = client.post("/auth/login", json=creds)
+            assert resp.status_code == 200
+            tokens.append(resp.json()["access_token"])
+
+        # Logout one session
+        client.post(
+            "/auth/logout",
+            headers={"Authorization": f"Bearer {tokens[0]}"},
+        )
+
+        # Now a new login must succeed
+        resp = client.post("/auth/login", json=creds)
+        assert resp.status_code == 200, "Login should succeed after freeing a session slot"

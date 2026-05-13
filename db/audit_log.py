@@ -27,9 +27,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
     user_agent   TEXT,
     request_body TEXT,
     details      TEXT DEFAULT '{}',
-    duration_ms  REAL
+    duration_ms  REAL,
+    request_id   TEXT
 );
 """
+
+_AUDIT_MIGRATIONS = [
+    "ALTER TABLE audit_log ADD COLUMN request_id TEXT;",
+]
 
 CREATE_AUDIT_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp DESC);",
@@ -48,6 +53,11 @@ async def init_audit_db():
     await _db.execute(CREATE_AUDIT_LOG)
     for idx in CREATE_AUDIT_INDEXES:
         await _db.execute(idx)
+    for migration in _AUDIT_MIGRATIONS:
+        try:
+            await _db.execute(migration)
+        except Exception:
+            pass
     await _db.commit()
     return _db
 
@@ -71,6 +81,7 @@ async def log_event(
     request_body: str = None,
     details: dict = None,
     duration_ms: float = None,
+    request_id: str = None,
 ):
     db = get_audit_db()
     event_id = str(uuid.uuid4())
@@ -79,12 +90,12 @@ async def log_event(
         """INSERT INTO audit_log
            (id, timestamp, event_type, user_id, username, client_id,
             method, path, status_code, ip_address, user_agent,
-            request_body, details, duration_ms)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            request_body, details, duration_ms, request_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (event_id, now, event_type, user_id, username, client_id,
          method, path, status_code, ip_address, user_agent,
          (request_body or "")[:2000],
-         json.dumps(details or {}), duration_ms),
+         json.dumps(details or {}), duration_ms, request_id),
     )
     await db.commit()
     return event_id
@@ -140,7 +151,7 @@ def events_to_csv(events: list[dict]) -> str:
     buf = io.StringIO()
     fieldnames = ["timestamp", "event_type", "username", "client_id",
                   "method", "path", "status_code", "ip_address",
-                  "user_agent", "duration_ms"]
+                  "user_agent", "duration_ms", "request_id"]
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(events)

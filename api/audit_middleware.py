@@ -6,6 +6,7 @@ Skips static files and health checks to avoid noise.
 
 import time
 import logging
+import uuid
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -64,9 +65,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if not _should_audit(request.url.path):
             return await call_next(request)
 
+        req_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+
         start = time.monotonic()
         response: Response = await call_next(request)
         duration_ms = (time.monotonic() - start) * 1000
+
+        response.headers["X-Request-ID"] = req_id
 
         try:
             from db.audit_log import log_event
@@ -84,6 +89,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 ip_address=ip,
                 user_agent=request.headers.get("user-agent", "")[:200],
                 duration_ms=round(duration_ms, 2),
+                request_id=req_id,
             )
         except Exception as exc:
             logger.debug("Audit log error: %s", exc)
