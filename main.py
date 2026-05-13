@@ -80,6 +80,17 @@ async def lifespan(app: FastAPI):
                 f"Set a strong value in your .env file before exposing this server.[/]"
             )
 
+    # Hard-fail if the server is network-exposed without an explicit encryption key.
+    # Locally (127.0.0.1) the auto-generated key is acceptable for development;
+    # any other bind address means real scanner/SIEM credentials could be at risk.
+    _is_local = config.HOST in ("127.0.0.1", "localhost", "::1")
+    if not config.PHANTOMFEED_ENCRYPTION_KEY and not _is_local:
+        raise RuntimeError(
+            "PHANTOMFEED_ENCRYPTION_KEY must be set when HOST is not localhost. "
+            "Generate one with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\""
+        )
+
     # Connect to database
     await db.connect()
     console.print("[green]✓ Database connected[/]")

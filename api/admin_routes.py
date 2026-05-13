@@ -184,8 +184,9 @@ async def list_client_users(client_id: str, _: dict = Depends(require_admin)):
 
 
 @router.post("/users", summary="Create a new user")
-async def create_user(req: UserCreate, _: dict = Depends(require_admin)):
+async def create_user(req: UserCreate, admin: dict = Depends(require_admin)):
     from auth.auth import hash_password
+    from db.audit_log import log_event
     existing = await db.get_user_by_username(req.username)
     if existing:
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -196,30 +197,47 @@ async def create_user(req: UserCreate, _: dict = Depends(require_admin)):
         role=req.role,
         client_id=req.client_id,
     )
+    await log_event(
+        "user_created",
+        user_id=admin["id"],
+        username=admin.get("username"),
+        details={"new_user": req.username, "role": req.role, "client_id": req.client_id},
+    )
     return {k: v for k, v in user.items() if k != "password_hash"}
 
 
 @router.patch("/users/{user_id}", summary="Update a user (reset password or change role)")
-async def update_user(user_id: str, req: UserUpdate, _: dict = Depends(require_admin)):
+async def update_user(user_id: str, req: UserUpdate, admin: dict = Depends(require_admin)):
     from auth.auth import hash_password
+    from db.audit_log import log_event
     user = await db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("username") == "admin" and req.role and req.role != "admin":
         raise HTTPException(status_code=400, detail="Cannot demote the built-in admin user")
     updates = {}
+    change_details = {"target_user": user.get("username")}
     if req.password:
         updates["password_hash"] = hash_password(req.password)
+        change_details["password_reset"] = True
     if req.role:
+        change_details["role_change"] = {"from": user.get("role"), "to": req.role}
         updates["role"] = req.role
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     updated = await db.update_user(user_id, **updates)
+    await log_event(
+        "user_updated",
+        user_id=admin["id"],
+        username=admin.get("username"),
+        details=change_details,
+    )
     return {k: v for k, v in updated.items() if k != "password_hash"}
 
 
 @router.delete("/users/{user_id}", status_code=204, summary="Delete a user")
-async def delete_user(user_id: str, _: dict = Depends(require_admin)):
+async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
+    from db.audit_log import log_event
     user = await db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -228,6 +246,12 @@ async def delete_user(user_id: str, _: dict = Depends(require_admin)):
     deleted = await db.delete_user(user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
+    await log_event(
+        "user_deleted",
+        user_id=admin["id"],
+        username=admin.get("username"),
+        details={"deleted_user": user.get("username"), "deleted_user_id": user_id},
+    )
 
 
 @router.post("/users/{user_id}/revoke-tokens", summary="Force-invalidate all tokens for a user")

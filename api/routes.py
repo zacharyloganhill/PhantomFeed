@@ -21,7 +21,7 @@ async def list_items(
     category: Optional[str] = Query(None, description="cve, kev, advisory, vendor, ics, threat, malware, supply"),
     feed_id: Optional[str] = Query(None, description="Filter by specific feed ID"),
     is_new: Optional[bool] = Query(None, description="Filter to new/unseen items only"),
-    search: Optional[str] = Query(None, description="Full-text search across title, desc, vendor, tags"),
+    search: Optional[str] = Query(None, max_length=200, description="Full-text search across title, desc, vendor, tags"),
     compliance: Optional[str] = Query(None, description="Filter by compliance tag: cmmc, nist, cis (partial match)"),
     sort: Optional[str] = Query(None, description="Sort order: 'risk' for risk score descending"),
     client_id: Optional[str] = Query(None, description="Filter to items exposed to this client's assets"),
