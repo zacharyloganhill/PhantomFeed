@@ -152,7 +152,7 @@ async def upload_scan(
 # ---------------------------------------------------------------------------
 
 @router.post("/upload/scan/{upload_id}/confirm")
-async def confirm_scan(upload_id: str, _: dict = Depends(get_current_user)):
+async def confirm_scan(upload_id: str, user: dict = Depends(get_current_user)):
     """Confirm and import a previously previewed scan file."""
     from uploads.upload_log import get_upload_log, update_upload_log
     log = await get_upload_log(upload_id)
@@ -161,6 +161,8 @@ async def confirm_scan(upload_id: str, _: dict = Depends(get_current_user)):
 
     filename = log["filename"]
     client_id = log.get("client_id")
+    if client_id:
+        _scope_client(user, client_id)
     fmt = log["file_type"]
 
     try:
@@ -315,7 +317,7 @@ async def upload_assets(
 async def confirm_assets(
     upload_id: str,
     body: Optional[dict] = None,
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     """Confirm asset import with optional field mapping override."""
     from uploads.upload_log import get_upload_log, update_upload_log
@@ -324,6 +326,8 @@ async def confirm_assets(
         raise HTTPException(404, "Upload not found")
 
     client_id = log.get("client_id")
+    if client_id:
+        _scope_client(user, client_id)
     filename = log["filename"]
 
     data = _load_temp(upload_id, filename)
@@ -471,9 +475,11 @@ async def upload_stix(file: UploadFile = File(...), _: dict = Depends(get_curren
 @router.post("/upload/clients")
 async def upload_clients(
     file: UploadFile = File(...),
-    _: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     """Preview bulk client import from CSV/XLSX."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
     data = await file.read()
     _check_size(data)
     filename = file.filename or "clients.csv"
@@ -497,8 +503,10 @@ async def upload_clients(
 
 
 @router.post("/upload/clients/{upload_id}/confirm")
-async def confirm_clients(upload_id: str, _: dict = Depends(get_current_user)):
+async def confirm_clients(upload_id: str, user: dict = Depends(get_current_user)):
     """Confirm bulk client import."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
     from uploads.upload_log import get_upload_log, update_upload_log
     log = await get_upload_log(upload_id)
     if not log:
