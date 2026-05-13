@@ -724,3 +724,93 @@ def test_csp_header_directive_coverage():
     assert "base-uri 'self'" in src
     assert "frame-ancestors 'none'" in src
     assert "connect-src 'self'" in src
+
+
+# ── JWT revocation tests ──────────────────────────────────────────────────────
+
+def test_create_access_token_includes_jti():
+    """Every issued token includes a unique jti claim."""
+    from auth.auth import create_access_token, decode_token
+    t1 = create_access_token({"sub": "user-1", "role": "analyst", "token_version": 0})
+    t2 = create_access_token({"sub": "user-1", "role": "analyst", "token_version": 0})
+    p1 = decode_token(t1)
+    p2 = decode_token(t2)
+    assert "jti" in p1
+    assert "jti" in p2
+    assert p1["jti"] != p2["jti"], "Each token must have a unique jti"
+
+
+def test_create_access_token_includes_token_version():
+    """Token payload carries the token_version claim passed at creation time."""
+    from auth.auth import create_access_token, decode_token
+    token = create_access_token({"sub": "u", "role": "analyst", "token_version": 3})
+    payload = decode_token(token)
+    assert payload.get("token_version") == 3
+
+
+@pytest.mark.asyncio
+async def test_revoke_token_blocks_reuse():
+    """A token added to the denylist is rejected by is_token_revoked."""
+    from db import database as db
+    await db.connect()
+    jti = str(uuid.uuid4())
+    assert not await db.is_token_revoked(jti)
+    await db.revoke_token(jti, "user-x", "2099-01-01T00:00:00")
+    assert await db.is_token_revoked(jti)
+
+
+@pytest.mark.asyncio
+async def test_bump_token_version_invalidates_old_tokens():
+    """After bump_token_version, a token carrying the old version is rejected."""
+    from db import database as db
+    from auth.auth import create_access_token, _validate_decoded_token
+    from fastapi import HTTPException
+
+    await db.connect()
+
+    # Create a fresh user
+    uid = str(uuid.uuid4())
+    await db.create_user(
+        username=f"revoke_test_{uid[:8]}",
+        password_hash="x",
+        role="analyst",
+        client_id=None,
+    )
+    user = await db.get_user_by_username(f"revoke_test_{uid[:8]}")
+    user_id = user["id"]
+
+    # Issue a token at version 0
+    token = create_access_token({
+        "sub": user_id, "role": "analyst", "token_version": 0
+    })
+    from auth.auth import decode_token
+    payload = decode_token(token)
+
+    # Token should be valid now
+    result = await _validate_decoded_token(payload)
+    assert result["id"] == user_id
+
+    # Admin bumps the version
+    await db.bump_token_version(user_id)
+
+    # Same token is now rejected
+    try:
+        await _validate_decoded_token(payload)
+        assert False, "Expected HTTPException after token version bump"
+    except HTTPException as e:
+        assert e.status_code == 401
+        assert "invalidated" in e.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_tokens_removes_stale_entries():
+    """purge_expired_tokens removes entries with past expires_at."""
+    from db import database as db
+    await db.connect()
+    jti_old = str(uuid.uuid4())
+    jti_new = str(uuid.uuid4())
+    await db.revoke_token(jti_old, "u1", "2000-01-01T00:00:00")  # already expired
+    await db.revoke_token(jti_new, "u2", "2099-01-01T00:00:00")  # far future
+    await db.purge_expired_tokens()
+    assert not await db.is_token_revoked(jti_old), "Expired entry should be purged"
+    assert await db.is_token_revoked(jti_new), "Future entry must be kept"

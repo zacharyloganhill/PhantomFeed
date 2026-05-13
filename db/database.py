@@ -400,6 +400,14 @@ CREATE TABLE IF NOT EXISTS pull_history (
 );
 """
 
+CREATE_TOKEN_DENYLIST = """
+CREATE TABLE IF NOT EXISTS token_denylist (
+    jti        TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -427,6 +435,11 @@ PHASE4_MIGRATIONS = [
     "ALTER TABLE scanner_configs ADD COLUMN connection_status TEXT DEFAULT 'gray';",
     "ALTER TABLE siem_configs ADD COLUMN connection_status TEXT DEFAULT 'gray';",
     "CREATE INDEX IF NOT EXISTS idx_pull_history_config ON pull_history(config_id, pulled_at DESC);",
+]
+
+PHASE5_MIGRATIONS = [
+    "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;",
+    "CREATE INDEX IF NOT EXISTS idx_token_denylist_expires ON token_denylist(expires_at);",
 ]
 
 _db: Optional[aiosqlite.Connection] = None
@@ -463,9 +476,10 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_SCANNER_CONFIGS)
     await _db.execute(CREATE_SCAN_FINDINGS)
     await _db.execute(CREATE_PULL_HISTORY)
+    await _db.execute(CREATE_TOKEN_DENYLIST)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
-    for migration in MIGRATIONS + PHASE3_MIGRATIONS + PHASE4_MIGRATIONS:
+    for migration in MIGRATIONS + PHASE3_MIGRATIONS + PHASE4_MIGRATIONS + PHASE5_MIGRATIONS:
         try:
             await _db.execute(migration)
         except Exception:
@@ -848,7 +862,7 @@ async def get_user_by_id(user_id: str) -> Optional[dict]:
 
 async def update_user(user_id: str, **kwargs) -> Optional[dict]:
     db = get_db()
-    allowed = {"password_hash", "role"}
+    allowed = {"password_hash", "role", "token_version"}
     sets, params = [], []
     for k, v in kwargs.items():
         if k in allowed:
@@ -871,6 +885,43 @@ async def delete_user(user_id: str) -> bool:
     await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
     await db.commit()
     return True
+
+
+# ── Token revocation ──────────────────────────────────────────────────────────
+
+async def is_token_revoked(jti: str) -> bool:
+    db = get_db()
+    async with db.execute("SELECT 1 FROM token_denylist WHERE jti = ?", (jti,)) as cur:
+        return (await cur.fetchone()) is not None
+
+
+async def revoke_token(jti: str, user_id: str, expires_at: str) -> None:
+    db = get_db()
+    await db.execute(
+        "INSERT OR IGNORE INTO token_denylist (jti, user_id, expires_at) VALUES (?, ?, ?)",
+        (jti, user_id, expires_at),
+    )
+    await db.commit()
+
+
+async def bump_token_version(user_id: str) -> None:
+    """Increment a user's token_version, immediately invalidating all their issued tokens."""
+    db = get_db()
+    await db.execute(
+        "UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?",
+        (user_id,),
+    )
+    await db.commit()
+
+
+async def purge_expired_tokens() -> int:
+    """Delete denylist entries whose tokens have already expired (routine cleanup)."""
+    db = get_db()
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    await db.execute("DELETE FROM token_denylist WHERE expires_at < ?", (now,))
+    await db.commit()
+    # rowcount not reliable for DELETE without RETURNING; return 0 as sentinel
+    return 0
 
 
 # ── Asset CRUD ────────────────────────────────────────────────────────────────

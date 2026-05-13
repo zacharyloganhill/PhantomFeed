@@ -2,11 +2,15 @@
 
 import time
 from collections import defaultdict
+from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, field_validator
 
-from auth.auth import verify_password, create_access_token, get_current_user
+from auth.auth import verify_password, create_access_token, get_current_user, decode_token
 from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+_bearer = HTTPBearer(auto_error=False)
 
 router = APIRouter()
 
@@ -65,7 +69,12 @@ async def login(req: LoginRequest):
         )
 
     _clear_failures(req.username)
-    token = create_access_token({"sub": user["id"], "role": user["role"], "username": user["username"]})
+    token = create_access_token({
+        "sub": user["id"],
+        "role": user["role"],
+        "username": user["username"],
+        "token_version": user.get("token_version") or 0,
+    })
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -83,3 +92,22 @@ async def me(user: dict = Depends(get_current_user)):
         "role": user["role"],
         "client_id": user.get("client_id"),
     }
+
+
+@router.post("/logout", summary="Revoke the current JWT token")
+async def logout(
+    user: dict = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+):
+    """Add the token's jti to the denylist so it cannot be reused before expiry."""
+    from db import database as db
+    from datetime import datetime
+
+    if credentials:
+        payload = decode_token(credentials.credentials)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            expires_at = datetime.utcfromtimestamp(exp).isoformat()
+            await db.revoke_token(jti, user["id"], expires_at)
+    return {"status": "logged_out"}

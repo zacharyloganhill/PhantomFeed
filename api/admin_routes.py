@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFil
 from fastapi.responses import Response
 from pydantic import BaseModel, field_validator
 
-from auth.auth import require_admin, decode_token
+from auth.auth import require_admin, decode_token, _validate_decoded_token
 from db import database as db
 
 
@@ -28,12 +28,7 @@ async def _require_admin_token_or_header(
     if not raw:
         raise HTTPException(401, "Not authenticated")
     payload = decode_token(raw)
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(401, "Invalid token")
-    user = await db.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(401, "User not found")
+    user = await _validate_decoded_token(payload)
     if user.get("role") != "admin":
         raise HTTPException(403, "Admin access required")
     return user
@@ -216,6 +211,19 @@ async def delete_user(user_id: str, _: dict = Depends(require_admin)):
     deleted = await db.delete_user(user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.post("/users/{user_id}/revoke-tokens", summary="Force-invalidate all tokens for a user")
+async def revoke_user_tokens(user_id: str, _: dict = Depends(require_admin)):
+    """
+    Increments the user's token_version, immediately invalidating every JWT they hold.
+    Use when an account is compromised or an employee is terminated.
+    """
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.bump_token_version(user_id)
+    return {"status": "ok", "user_id": user_id, "message": "All active tokens invalidated"}
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

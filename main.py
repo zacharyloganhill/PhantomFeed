@@ -103,6 +103,10 @@ async def lifespan(app: FastAPI):
     if actor_count > 0:
         console.print(f"[green]Seeded {actor_count} threat actors[/]")
 
+    # Purge expired token denylist entries from previous runs
+    from db.database import purge_expired_tokens
+    await purge_expired_tokens()
+
     # Do an initial poll of all feeds on startup
     console.print("[cyan]Running initial feed poll...[/]")
     asyncio.create_task(initial_poll())
