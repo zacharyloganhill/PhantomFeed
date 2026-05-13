@@ -167,6 +167,20 @@ async def security_headers(request: Request, call_next):
     # Only set HSTS when served over HTTPS
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Content-Security-Policy
+    # 'unsafe-inline' is required because the current frontend uses inline <script>
+    # and style= attributes throughout. Migrating to nonces would allow removing it.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://d3js.org; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none';"
+    )
     return response
 
 app.include_router(router, prefix="/api/v1", tags=["Threat Feed"])

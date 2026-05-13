@@ -7,12 +7,15 @@ Registered BEFORE scanner_routes / siem_routes so literal paths
 (e.g. /scanners/test) take priority over /{scanner_id} parameters.
 """
 
+import ipaddress
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 import db.database as db
 from auth.auth import get_current_user, require_client_access
@@ -20,6 +23,44 @@ from security.encryption import encrypt
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Integrations"])
+
+
+# ── SSRF guard for integration host URLs ──────────────────────────────────────
+# Enterprise scanners/SIEMs legitimately live on RFC-1918 networks, so we allow
+# those. We block only loopback and cloud-metadata addresses — the vectors an
+# attacker would use to pivot from a compromised client account to the server
+# itself or the underlying cloud host.
+
+_BLOCKED_INTEGRATION_NETS = [
+    ipaddress.ip_network("127.0.0.0/8"),       # loopback
+    ipaddress.ip_network("::1/128"),            # IPv6 loopback
+    ipaddress.ip_network("169.254.0.0/16"),     # link-local / AWS & GCP metadata
+    ipaddress.ip_network("0.0.0.0/8"),          # unspecified
+]
+
+_LOOPBACK_RE = re.compile(r"^(localhost|127\.|0\.0\.0\.0)(:|/|$)", re.IGNORECASE)
+
+
+def _validate_integration_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("host_url must use http or https")
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("host_url must contain a valid hostname or IP")
+    if _LOOPBACK_RE.match(host):
+        raise ValueError("host_url must not target localhost or loopback addresses")
+    try:
+        addr = ipaddress.ip_address(host)
+        if any(addr in net for net in _BLOCKED_INTEGRATION_NETS):
+            raise ValueError("host_url must not target loopback or cloud-metadata addresses")
+    except ValueError as exc:
+        if "host_url" in str(exc):
+            raise
+        # Hostname (not a bare IP) — allow; DNS resolution happens in the fetcher
+    return url
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -35,6 +76,11 @@ class ScannerTestRequest(BaseModel):
     password: Optional[str] = ""
     extra_config: Optional[dict] = {}
 
+    @field_validator("host_url")
+    @classmethod
+    def validate_host(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_integration_url(v)
+
 
 class SIEMTestRequest(BaseModel):
     siem_type: str
@@ -49,6 +95,11 @@ class SIEMTestRequest(BaseModel):
     lookback_window: Optional[str] = "24h"
     max_results: Optional[int] = 100
     extra_config: Optional[dict] = {}
+
+    @field_validator("host_url")
+    @classmethod
+    def validate_host(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_integration_url(v)
 
 
 # ── Scanner test ───────────────────────────────────────────────────────────────

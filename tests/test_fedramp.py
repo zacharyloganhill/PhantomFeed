@@ -680,3 +680,47 @@ def test_rate_limiter_enforces_limit():
         assert False, "Expected HTTP 429"
     except HTTPException as e:
         assert e.status_code == 429
+
+
+def test_integration_ssrf_blocks_loopback_and_metadata():
+    """Scanner/SIEM test requests reject loopback and cloud-metadata host URLs."""
+    from pydantic import ValidationError
+    from api.integration_routes import ScannerTestRequest, SIEMTestRequest
+
+    blocked = [
+        "http://localhost/api",
+        "http://127.0.0.1:8834",
+        "http://169.254.169.254/latest/meta-data/",
+        "ftp://192.168.1.1/scan",   # bad scheme
+    ]
+    for url in blocked:
+        try:
+            ScannerTestRequest(scanner_type="tenable", host_url=url)
+            assert False, f"Expected ValidationError for scanner {url}"
+        except ValidationError:
+            pass
+        try:
+            SIEMTestRequest(siem_type="splunk", host_url=url)
+            assert False, f"Expected ValidationError for SIEM {url}"
+        except ValidationError:
+            pass
+
+    # Internal RFC-1918 hosts are legitimate scanner targets — must be allowed
+    req = ScannerTestRequest(scanner_type="tenable", host_url="https://10.0.0.5:8834")
+    assert req.host_url == "https://10.0.0.5:8834"
+
+    # Public hostname must be allowed
+    req2 = SIEMTestRequest(siem_type="splunk", host_url="https://splunk.example.com")
+    assert req2.host_url == "https://splunk.example.com"
+
+
+def test_csp_header_directive_coverage():
+    """CSP string in main.py contains the required restrictive directives."""
+    import main  # importing triggers module-level code; just inspect the source
+    import inspect, textwrap
+    src = inspect.getsource(main.security_headers)
+    assert "Content-Security-Policy" in src
+    assert "object-src 'none'" in src
+    assert "base-uri 'self'" in src
+    assert "frame-ancestors 'none'" in src
+    assert "connect-src 'self'" in src
