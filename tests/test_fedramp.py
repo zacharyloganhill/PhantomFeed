@@ -819,3 +819,25 @@ async def test_purge_expired_tokens_removes_stale_entries():
     await db.purge_expired_tokens()
     assert not await db.is_token_revoked(jti_old), "Expired entry should be purged"
     assert await db.is_token_revoked(jti_new), "Future entry must be kept"
+
+
+# ── Request body size limit tests ─────────────────────────────────────────────
+
+def test_json_body_size_middleware_constant():
+    """_MAX_JSON_BODY is set to 1 MB and referenced by the middleware."""
+    import inspect
+    import main
+    src = inspect.getsource(main.limit_json_body)
+    # Middleware must reference the constant
+    assert "_MAX_JSON_BODY" in src
+    assert main._MAX_JSON_BODY == 1 * 1024 * 1024
+
+
+def test_upload_confirm_cleanup_uses_finally():
+    """confirm_scan / confirm_assets / confirm_clients use try/finally for cleanup."""
+    import inspect
+    from api import upload_routes
+    for fn_name in ("confirm_scan", "confirm_assets", "confirm_clients"):
+        src = inspect.getsource(getattr(upload_routes, fn_name))
+        assert "finally" in src, f"{fn_name} must use try/finally to guarantee cleanup"
+        assert "_cleanup_temp" in src, f"{fn_name} must call _cleanup_temp"

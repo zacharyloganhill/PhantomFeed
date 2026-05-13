@@ -182,84 +182,86 @@ async def confirm_scan(upload_id: str, user: dict = Depends(get_current_user)):
     matched_cves = 0
     errors = []
 
-    if client_id:
-        from db import database as db
-        from ingest.cpe_matcher import match_item_to_assets
-        from compliance.mappings import tag_item
-        from ingest.risk_score import score_item
+    try:
+        if client_id:
+            from db import database as db
+            from ingest.cpe_matcher import match_item_to_assets
+            from compliance.mappings import tag_item
+            from ingest.risk_score import score_item
 
-        # Import assets
-        asset_ids = []
-        for asset in assets:
-            try:
-                aid = await db.upsert_asset(
-                    client_id=client_id,
-                    software=asset.get("software") or asset.get("os") or "Unknown",
-                    version=asset.get("version", ""),
-                    hostname=asset.get("hostname", ""),
-                    ip_address=asset.get("ip_address", ""),
-                    os=asset.get("os", ""),
-                    os_version=asset.get("os_version", ""),
-                )
-                asset_ids.append(aid)
-                imported_assets += 1
-            except Exception as e:
-                errors.append(str(e)[:100])
+            # Import assets
+            asset_ids = []
+            for asset in assets:
+                try:
+                    aid = await db.upsert_asset(
+                        client_id=client_id,
+                        software=asset.get("software") or asset.get("os") or "Unknown",
+                        version=asset.get("version", ""),
+                        hostname=asset.get("hostname", ""),
+                        ip_address=asset.get("ip_address", ""),
+                        os=asset.get("os", ""),
+                        os_version=asset.get("os_version", ""),
+                    )
+                    asset_ids.append(aid)
+                    imported_assets += 1
+                except Exception as e:
+                    errors.append(str(e)[:100])
 
-        # Import findings as threat items
-        all_assets = await db.get_assets(client_id)
-        for finding in findings:
-            cves = finding.get("cve_ids", [])
-            matched_cves += len(cves)
-            title = finding.get("title", "")
-            if not title:
-                continue
-            from ingest.base import BaseFetcher
-            item = {
-                "feed_id": f"scan_upload_{fmt}",
-                "feed_label": f"Scan Upload ({fmt.upper()})",
-                "category": "cve" if cves else "advisory",
-                "severity": finding.get("severity", "MEDIUM"),
-                "title": title[:250],
-                "description": finding.get("description", "")[:2000],
-                "vendor": "",
-                "product": "",
-                "url": "",
-                "published_at": datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"),
-                "cve_ids": cves,
-                "tags": [finding.get("hostname", ""), finding.get("ip_address", "")],
-                "raw": {"solution": finding.get("solution", "")},
-                "compliance_tags": [],
-            }
-            item["compliance_tags"] = tag_item(item)
-            try:
-                inserted = await db.upsert_item(item)
-                if inserted:
-                    imported_findings += 1
-                    # CPE match new finding against assets
-                    matches = match_item_to_assets(item, all_assets)
-                    item_id = db.make_id(item["feed_id"], item["title"], item.get("published_at", ""))
-                    for m in matches:
-                        await db.upsert_exposure(
-                            client_id=m["client_id"],
-                            item_id=item_id,
-                            asset_id=m["asset_id"],
-                            match_type=m["match_type"],
-                            confidence=m["confidence"],
-                        )
-            except Exception as e:
-                errors.append(str(e)[:100])
+            # Import findings as threat items
+            all_assets = await db.get_assets(client_id)
+            for finding in findings:
+                cves = finding.get("cve_ids", [])
+                matched_cves += len(cves)
+                title = finding.get("title", "")
+                if not title:
+                    continue
+                from ingest.base import BaseFetcher
+                item = {
+                    "feed_id": f"scan_upload_{fmt}",
+                    "feed_label": f"Scan Upload ({fmt.upper()})",
+                    "category": "cve" if cves else "advisory",
+                    "severity": finding.get("severity", "MEDIUM"),
+                    "title": title[:250],
+                    "description": finding.get("description", "")[:2000],
+                    "vendor": "",
+                    "product": "",
+                    "url": "",
+                    "published_at": datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"),
+                    "cve_ids": cves,
+                    "tags": [finding.get("hostname", ""), finding.get("ip_address", "")],
+                    "raw": {"solution": finding.get("solution", "")},
+                    "compliance_tags": [],
+                }
+                item["compliance_tags"] = tag_item(item)
+                try:
+                    inserted = await db.upsert_item(item)
+                    if inserted:
+                        imported_findings += 1
+                        # CPE match new finding against assets
+                        matches = match_item_to_assets(item, all_assets)
+                        item_id = db.make_id(item["feed_id"], item["title"], item.get("published_at", ""))
+                        for m in matches:
+                            await db.upsert_exposure(
+                                client_id=m["client_id"],
+                                item_id=item_id,
+                                asset_id=m["asset_id"],
+                                match_type=m["match_type"],
+                                confidence=m["confidence"],
+                            )
+                except Exception as e:
+                    errors.append(str(e)[:100])
 
-    await update_upload_log(
-        upload_id=upload_id,
-        status="imported" if not errors else "partial",
-        records_total=len(assets) + len(findings),
-        records_imported=imported_assets + imported_findings,
-        records_skipped=max(0, len(assets) + len(findings) - imported_assets - imported_findings),
-        error_message="; ".join(errors[:5]) if errors else None,
-        completed=True,
-    )
-    _cleanup_temp(upload_id)
+        await update_upload_log(
+            upload_id=upload_id,
+            status="imported" if not errors else "partial",
+            records_total=len(assets) + len(findings),
+            records_imported=imported_assets + imported_findings,
+            records_skipped=max(0, len(assets) + len(findings) - imported_assets - imported_findings),
+            error_message="; ".join(errors[:5]) if errors else None,
+            completed=True,
+        )
+    finally:
+        _cleanup_temp(upload_id)
 
     return {
         "upload_id": upload_id,
@@ -345,32 +347,34 @@ async def confirm_assets(
     imported = 0
     errors = []
 
-    if client_id:
-        from db import database as db
-        for asset in assets:
-            try:
-                await db.upsert_asset(
-                    client_id=client_id,
-                    software=asset.get("software") or "Unknown",
-                    version=asset.get("version", ""),
-                    hostname=asset.get("hostname", ""),
-                    ip_address=asset.get("ip_address", ""),
-                    os=asset.get("os", ""),
-                )
-                imported += 1
-            except Exception as e:
-                errors.append(str(e)[:100])
+    try:
+        if client_id:
+            from db import database as db
+            for asset in assets:
+                try:
+                    await db.upsert_asset(
+                        client_id=client_id,
+                        software=asset.get("software") or "Unknown",
+                        version=asset.get("version", ""),
+                        hostname=asset.get("hostname", ""),
+                        ip_address=asset.get("ip_address", ""),
+                        os=asset.get("os", ""),
+                    )
+                    imported += 1
+                except Exception as e:
+                    errors.append(str(e)[:100])
 
-    await update_upload_log(
-        upload_id=upload_id,
-        status="imported" if not errors else "partial",
-        records_total=len(assets),
-        records_imported=imported,
-        records_skipped=len(assets) - imported,
-        error_message="; ".join(errors[:3]) if errors else None,
-        completed=True,
-    )
-    _cleanup_temp(upload_id)
+        await update_upload_log(
+            upload_id=upload_id,
+            status="imported" if not errors else "partial",
+            records_total=len(assets),
+            records_imported=imported,
+            records_skipped=len(assets) - imported,
+            error_message="; ".join(errors[:3]) if errors else None,
+            completed=True,
+        )
+    finally:
+        _cleanup_temp(upload_id)
     return {"upload_id": upload_id, "imported_assets": imported, "errors": errors[:5]}
 
 
@@ -520,29 +524,32 @@ async def confirm_clients(upload_id: str, user: dict = Depends(get_current_user)
     from db import database as db
     imported = 0
     errors = []
-    for row in rows:
-        name = (row.get("name") or row.get("Name") or "").strip()
-        if not name:
-            continue
-        contact = (row.get("contact_email") or row.get("email") or "").strip()
-        vendors = [v.strip() for v in (row.get("vendors") or "").split(";") if v.strip()]
-        products = [p.strip() for p in (row.get("products") or "").split(";") if p.strip()]
-        min_sev = (row.get("min_severity") or "MEDIUM").strip().upper()
-        stack = {"vendors": vendors, "products": products, "min_severity": min_sev}
-        try:
-            await db.create_client(name=name, contact_email=contact, stack_profile=stack)
-            imported += 1
-        except Exception as e:
-            errors.append(str(e)[:100])
 
-    await update_upload_log(
-        upload_id=upload_id,
-        status="imported",
-        records_total=len(rows),
-        records_imported=imported,
-        completed=True,
-    )
-    _cleanup_temp(upload_id)
+    try:
+        for row in rows:
+            name = (row.get("name") or row.get("Name") or "").strip()
+            if not name:
+                continue
+            contact = (row.get("contact_email") or row.get("email") or "").strip()
+            vendors = [v.strip() for v in (row.get("vendors") or "").split(";") if v.strip()]
+            products = [p.strip() for p in (row.get("products") or "").split(";") if p.strip()]
+            min_sev = (row.get("min_severity") or "MEDIUM").strip().upper()
+            stack = {"vendors": vendors, "products": products, "min_severity": min_sev}
+            try:
+                await db.create_client(name=name, contact_email=contact, stack_profile=stack)
+                imported += 1
+            except Exception as e:
+                errors.append(str(e)[:100])
+
+        await update_upload_log(
+            upload_id=upload_id,
+            status="imported",
+            records_total=len(rows),
+            records_imported=imported,
+            completed=True,
+        )
+    finally:
+        _cleanup_temp(upload_id)
     return {"imported_clients": imported, "errors": errors[:5]}
 
 

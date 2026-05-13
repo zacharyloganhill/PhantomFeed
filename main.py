@@ -172,6 +172,22 @@ app.add_middleware(
 from api.audit_middleware import AuditMiddleware
 app.add_middleware(AuditMiddleware)
 
+_MAX_JSON_BODY = 1 * 1024 * 1024  # 1 MB — generous for any legitimate API call
+
+
+@app.middleware("http")
+async def limit_json_body(request: Request, call_next):
+    ct = request.headers.get("content-type", "")
+    if "application/json" in ct:
+        cl = request.headers.get("content-length")
+        if cl and int(cl) > _MAX_JSON_BODY:
+            return Response(
+                content='{"detail":"Request body too large (max 1 MB for JSON)"}',
+                status_code=413,
+                media_type="application/json",
+            )
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
