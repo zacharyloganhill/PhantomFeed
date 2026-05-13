@@ -408,6 +408,15 @@ CREATE TABLE IF NOT EXISTS token_denylist (
 );
 """
 
+CREATE_USER_ITEM_READS = """
+CREATE TABLE IF NOT EXISTS user_item_reads (
+    user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_severity   ON threat_items(severity);",
     "CREATE INDEX IF NOT EXISTS idx_category   ON threat_items(category);",
@@ -440,6 +449,7 @@ PHASE4_MIGRATIONS = [
 PHASE5_MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0;",
     "CREATE INDEX IF NOT EXISTS idx_token_denylist_expires ON token_denylist(expires_at);",
+    "CREATE INDEX IF NOT EXISTS idx_user_item_reads_user ON user_item_reads(user_id);",
 ]
 
 _db: Optional[aiosqlite.Connection] = None
@@ -477,6 +487,7 @@ async def connect() -> aiosqlite.Connection:
     await _db.execute(CREATE_SCAN_FINDINGS)
     await _db.execute(CREATE_PULL_HISTORY)
     await _db.execute(CREATE_TOKEN_DENYLIST)
+    await _db.execute(CREATE_USER_ITEM_READS)
     for idx in CREATE_INDEXES:
         await _db.execute(idx)
     for migration in MIGRATIONS + PHASE3_MIGRATIONS + PHASE4_MIGRATIONS + PHASE5_MIGRATIONS:
@@ -587,6 +598,7 @@ async def get_items(
     offset: int = 0,
     stack_vendors: Optional[list] = None,
     stack_products: Optional[list] = None,
+    user_id: Optional[str] = None,
 ) -> list[dict]:
     db = get_db()
     conditions = []
@@ -604,8 +616,20 @@ async def get_items(
         conditions.append("feed_id = ?")
         params.append(feed_id)
     if is_new is not None:
-        conditions.append("is_new = ?")
-        params.append(1 if is_new else 0)
+        if user_id:
+            # Per-user: unread = not in user_item_reads for this user
+            if is_new:
+                conditions.append(
+                    "id NOT IN (SELECT item_id FROM user_item_reads WHERE user_id = ?)"
+                )
+            else:
+                conditions.append(
+                    "id IN (SELECT item_id FROM user_item_reads WHERE user_id = ?)"
+                )
+            params.append(user_id)
+        else:
+            conditions.append("is_new = ?")
+            params.append(1 if is_new else 0)
     if search:
         conditions.append(
             "(title LIKE ? OR description LIKE ? OR vendor LIKE ? OR tags LIKE ? OR cve_ids LIKE ?)"
@@ -660,23 +684,44 @@ async def get_item(item_id: str) -> Optional[dict]:
     return _row_to_dict(row) if row else None
 
 
-async def mark_read(item_id: str):
+async def mark_read(item_id: str, user_id: Optional[str] = None):
     db = get_db()
-    await db.execute(
-        "UPDATE threat_items SET is_read = 1, is_new = 0 WHERE id = ?", (item_id,)
-    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    if user_id:
+        await db.execute(
+            "INSERT OR IGNORE INTO user_item_reads (user_id, item_id, read_at) VALUES (?, ?, ?)",
+            (user_id, item_id, now),
+        )
+    else:
+        # Legacy path: update global flag (kept for backwards compat with callers that don't pass user_id)
+        await db.execute(
+            "UPDATE threat_items SET is_read = 1, is_new = 0 WHERE id = ?", (item_id,)
+        )
     await db.commit()
 
 
-async def mark_all_read(feed_id: Optional[str] = None):
+async def mark_all_read(user_id: Optional[str] = None, feed_id: Optional[str] = None):
     db = get_db()
-    if feed_id:
-        await db.execute(
-            "UPDATE threat_items SET is_read = 1, is_new = 0 WHERE feed_id = ?",
-            (feed_id,),
-        )
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    if user_id:
+        if feed_id:
+            async with db.execute("SELECT id FROM threat_items WHERE feed_id = ?", (feed_id,)) as cur:
+                item_ids = [r["id"] for r in await cur.fetchall()]
+        else:
+            async with db.execute("SELECT id FROM threat_items") as cur:
+                item_ids = [r["id"] for r in await cur.fetchall()]
+        for iid in item_ids:
+            await db.execute(
+                "INSERT OR IGNORE INTO user_item_reads (user_id, item_id, read_at) VALUES (?, ?, ?)",
+                (user_id, iid, now),
+            )
     else:
-        await db.execute("UPDATE threat_items SET is_read = 1, is_new = 0")
+        if feed_id:
+            await db.execute(
+                "UPDATE threat_items SET is_read = 1, is_new = 0 WHERE feed_id = ?", (feed_id,)
+            )
+        else:
+            await db.execute("UPDATE threat_items SET is_read = 1, is_new = 0")
     await db.commit()
 
 

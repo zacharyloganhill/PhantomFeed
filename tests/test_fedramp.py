@@ -623,16 +623,21 @@ def test_upload_size_limit():
         assert e.status_code == 413
 
 
-def test_pydantic_user_create_password_length():
-    """UserCreate rejects passwords shorter than 8 chars."""
+def test_pydantic_user_create_password_complexity():
+    """UserCreate enforces length + letter + digit-or-special requirements."""
     from pydantic import ValidationError
     from api.admin_routes import UserCreate
-    try:
-        UserCreate(username="testuser", password="short")
-        assert False, "Expected ValidationError"
-    except ValidationError:
-        pass
-    # Valid password should not raise
+
+    bad = ["short", "alllowercase", "12345678", "NoDigitOrSpecial"]
+    for pw in bad:
+        try:
+            UserCreate(username="testuser", password=pw)
+            assert False, f"Expected ValidationError for '{pw}'"
+        except ValidationError:
+            pass
+
+    # Valid: letter + digit + special, >=8 chars
+    UserCreate(username="testuser", password="Secure1!")
     UserCreate(username="testuser", password="longpassword123")
 
 

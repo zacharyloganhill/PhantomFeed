@@ -55,14 +55,25 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login", summary="Login and receive a JWT token")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     from db import database as db
 
+    from db.audit_log import log_event
+
     _check_lockout(req.username)
+    ip = request.client.host if request.client else None
 
     user = await db.get_user_by_username(req.username)
     if not user or not verify_password(req.password, user["password_hash"]):
         _record_failure(req.username)
+        await log_event(
+            "login_failure",
+            username=req.username,
+            method="POST",
+            path="/auth/login",
+            status_code=401,
+            ip_address=ip,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -75,6 +86,15 @@ async def login(req: LoginRequest):
         "username": user["username"],
         "token_version": user.get("token_version") or 0,
     })
+    await log_event(
+        "login_success",
+        user_id=user["id"],
+        username=user["username"],
+        method="POST",
+        path="/auth/login",
+        status_code=200,
+        ip_address=ip,
+    )
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -96,11 +116,13 @@ async def me(user: dict = Depends(get_current_user)):
 
 @router.post("/logout", summary="Revoke the current JWT token")
 async def logout(
+    request: Request,
     user: dict = Depends(get_current_user),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ):
     """Add the token's jti to the denylist so it cannot be reused before expiry."""
     from db import database as db
+    from db.audit_log import log_event
     from datetime import datetime
 
     if credentials:
@@ -108,6 +130,18 @@ async def logout(
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            expires_at = datetime.utcfromtimestamp(exp).isoformat()
+            from datetime import timezone as _tz
+            expires_at = datetime.fromtimestamp(exp, tz=_tz.utc).replace(tzinfo=None).isoformat()
             await db.revoke_token(jti, user["id"], expires_at)
+
+    ip = request.client.host if request.client else None
+    await log_event(
+        "logout",
+        user_id=user["id"],
+        username=user.get("username"),
+        method="POST",
+        path="/auth/logout",
+        status_code=200,
+        ip_address=ip,
+    )
     return {"status": "logged_out"}

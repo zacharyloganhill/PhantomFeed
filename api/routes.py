@@ -68,6 +68,7 @@ async def list_items(
         offset=offset,
         stack_vendors=stack_vendors,
         stack_products=stack_products,
+        user_id=user["id"],
     )
     # Exposure filter (post-query — needs asset match data)
     if client_id and exposed_only:
@@ -85,14 +86,14 @@ async def get_item(item_id: str, _: dict = Depends(get_current_user)):
 
 
 @router.post("/items/{item_id}/read", summary="Mark an item as read")
-async def mark_read(item_id: str, _: dict = Depends(get_current_user)):
-    await db.mark_read(item_id)
+async def mark_read(item_id: str, user: dict = Depends(get_current_user)):
+    await db.mark_read(item_id, user_id=user["id"])
     return {"status": "ok", "item_id": item_id}
 
 
 @router.post("/items/read-all", summary="Mark all (or all in a feed) as read")
-async def mark_all_read(feed_id: Optional[str] = Query(None), _: dict = Depends(get_current_user)):
-    await db.mark_all_read(feed_id=feed_id)
+async def mark_all_read(feed_id: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
+    await db.mark_all_read(user_id=user["id"], feed_id=feed_id)
     return {"status": "ok"}
 
 

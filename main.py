@@ -141,9 +141,10 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
-    # Disable built-in docs routes so we can gate them behind auth below
+    # Disable built-in docs/schema routes; re-exposed below with auth
     docs_url=None,
     redoc_url=None,
+    openapi_url=None,
 )
 
 # CORS — only allow the origins this server is known to be served from.

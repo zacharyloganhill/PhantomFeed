@@ -7,6 +7,8 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 
+_PASSWORD_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*[0-9!@#$%^&*()\-_=+\[\]{}|;:',.<>?/`~\\]).{8,}$")
+
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel, field_validator
@@ -61,6 +63,8 @@ class ClientUpdate(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
+    role: str = "analyst"
+    client_id: Optional[str] = None
 
     @field_validator("username")
     @classmethod
@@ -74,9 +78,19 @@ class UserCreate(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_min_length(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("password must be at least 8 characters")
+    def password_complexity(cls, v: str) -> str:
+        if not _PASSWORD_RE.match(v):
+            raise ValueError(
+                "password must be at least 8 characters and contain "
+                "at least one letter and one digit or special character"
+            )
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def role_valid(cls, v: str) -> str:
+        if v not in ("admin", "analyst", "viewer"):
+            raise ValueError("role must be admin, analyst, or viewer")
         return v
 
 
@@ -87,9 +101,12 @@ class UserUpdate(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_min_length(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) < 8:
-            raise ValueError("password must be at least 8 characters")
+    def password_complexity(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _PASSWORD_RE.match(v):
+            raise ValueError(
+                "password must be at least 8 characters and contain "
+                "at least one letter and one digit or special character"
+            )
         return v
 
     @field_validator("role")
@@ -214,15 +231,22 @@ async def delete_user(user_id: str, _: dict = Depends(require_admin)):
 
 
 @router.post("/users/{user_id}/revoke-tokens", summary="Force-invalidate all tokens for a user")
-async def revoke_user_tokens(user_id: str, _: dict = Depends(require_admin)):
+async def revoke_user_tokens(user_id: str, admin: dict = Depends(require_admin)):
     """
     Increments the user's token_version, immediately invalidating every JWT they hold.
     Use when an account is compromised or an employee is terminated.
     """
+    from db.audit_log import log_event
     user = await db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     await db.bump_token_version(user_id)
+    await log_event(
+        "force_logout",
+        user_id=admin["id"],
+        username=admin.get("username"),
+        details={"target_user_id": user_id, "target_username": user.get("username")},
+    )
     return {"status": "ok", "user_id": user_id, "message": "All active tokens invalidated"}
 
 
